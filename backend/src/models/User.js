@@ -5,6 +5,8 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, enum: ['client', 'provider'], required: true },
+  // Feature 4 — phone for clients too (shown after booking accepted)
+  phone: { type: String, default: '' },
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

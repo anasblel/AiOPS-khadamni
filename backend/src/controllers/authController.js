@@ -10,12 +10,12 @@ const generateTokens = (id) => ({
 
 export const register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, phone } = req.body;
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already in use' });
 
     const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, password: hashed, role });
+    const user = await User.create({ name, email, password: hashed, role, phone: phone || '' });
 
     if (role === 'provider') {
       await Provider.create({ user: user._id });
@@ -53,5 +53,31 @@ export const refresh = async (req, res) => {
     res.json({ accessToken });
   } catch {
     res.status(401).json({ message: 'Invalid refresh token' });
+  }
+};
+
+// GET /api/auth/me — get current user profile
+export const getMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// PATCH /api/auth/me — update current user profile (phone, name)
+export const updateMe = async (req, res) => {
+  try {
+    const { phone, name } = req.body;
+    const updates = {};
+    if (phone !== undefined) updates.phone = phone;
+    if (name !== undefined) updates.name = name;
+
+    const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true }).select('-password');
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };

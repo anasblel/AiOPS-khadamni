@@ -2,28 +2,61 @@ import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import ProfileViewModal from '../components/ProfileViewModal';
+import UserMenu from '../components/UserMenu';
 
-function ProviderCard({ provider, onBook }) {
+const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+function ProviderCard({ provider, onBook, onViewProfile }) {
   return (
     <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-4 mt-3">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="font-semibold text-sm text-white">{provider.name}</div>
           <div className="text-xs text-white/50 mt-0.5">
-            {provider.isRemote ? '💻 Remote' : '📍 In-person'} · {provider.hourlyRate} {provider.currency}/hr
+            {provider.specialty && <span className="text-indigo-300">{provider.specialty}</span>}
+            {provider.specialty && ' · '}
+            {provider.workMode === 'both' ? '🌎 Remote & In-person' : provider.workMode === 'remote' ? '💻 Remote' : '📍 In-person'}
+            {provider.city && ` · ${provider.city}`}
+            {' · '}{provider.hourlyRate} {provider.currency}/hr
           </div>
           <div className="flex flex-wrap gap-1 mt-2">
             {provider.skills?.map(s => (
               <span key={s} className="text-xs bg-white/5 border border-white/10 rounded-md px-2 py-0.5 text-white/60">{s}</span>
             ))}
           </div>
+          {/* Availability preview */}
+          {provider.availability?.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {provider.availability
+                .slice()
+                .sort((a, b) => DAYS_ORDER.indexOf(a.day) - DAYS_ORDER.indexOf(b.day))
+                .slice(0, 4)
+                .map(a => (
+                  <span key={a.day} className="text-[10px] bg-green-500/10 border border-green-500/20 text-green-300 px-1.5 py-0.5 rounded capitalize">
+                    {a.day.slice(0, 3)} {a.slots?.[0]?.start}–{a.slots?.[0]?.end}
+                  </span>
+                ))}
+              {provider.availability.length > 4 && (
+                <span className="text-[10px] text-white/30">+{provider.availability.length - 4} more</span>
+              )}
+            </div>
+          )}
         </div>
-        <button
-          onClick={() => onBook(provider)}
-          className="shrink-0 bg-indigo-600 hover:bg-indigo-500 transition-colors text-xs font-semibold px-3 py-2 rounded-lg"
-        >
-          Book
-        </button>
+        <div className="flex flex-col gap-1.5 shrink-0">
+          <button
+            onClick={() => onViewProfile(provider)}
+            className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-xs font-medium px-3 py-2 rounded-lg text-white/60 hover:text-white"
+          >
+            View Profile
+          </button>
+          <button
+            onClick={() => onBook(provider)}
+            className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-xs font-semibold px-3 py-2 rounded-lg"
+          >
+            Book
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -33,26 +66,141 @@ function BookingModal({ provider, onClose, onConfirm }) {
   const [form, setForm] = useState({ skill: provider.skills?.[0] || '', date: '', timeFrom: '', budget: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [clientLocation, setClientLocation] = useState(null);
+  const [detectingLoc, setDetectingLoc] = useState(false);
+  const [locAddress, setLocAddress] = useState('');
+  const overlayRef = useRef(null);
+
+  // ESC key to close
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
+  // Click outside to close
+  const handleOverlayClick = (e) => {
+    if (e.target === overlayRef.current) onClose();
+  };
+
+  // Detect client location
+  const detectLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setDetectingLoc(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const coords = [pos.coords.latitude, pos.coords.longitude];
+        setClientLocation(coords);
+        // Reverse geocode for address
+        try {
+          const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords[0]}&lon=${coords[1]}`);
+          const data = await resp.json();
+          if (data && data.address) {
+            const { road, suburb, city, town, village, state } = data.address;
+            const parts = [road, suburb, city || town || village || state].filter(Boolean);
+            setLocAddress(parts.join(', ') || data.display_name);
+          } else {
+            setLocAddress(data.display_name || `${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}`);
+          }
+        } catch {
+          setLocAddress(`${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}`);
+        }
+        setDetectingLoc(false);
+      },
+      (err) => {
+        setError('Location access denied. You can still book without sharing location.');
+        setDetectingLoc(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  // Check if selected date/time fits provider availability
+  const getAvailabilityMatch = () => {
+    if (!form.date || !provider.availability?.length) return null;
+    const dateObj = new Date(form.date + 'T12:00:00');
+    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    const dayAvail = provider.availability.find(a => a.day === dayName);
+    if (!dayAvail) return { match: false, message: `Provider is not available on ${dayName}s` };
+    if (form.timeFrom && dayAvail.slots?.length > 0) {
+      const inSlot = dayAvail.slots.some(s => form.timeFrom >= s.start && form.timeFrom <= s.end);
+      if (!inSlot) return { match: false, message: `Time ${form.timeFrom} is outside provider's slots (${dayAvail.slots.map(s => s.start + '–' + s.end).join(', ')})` };
+    }
+    return { match: true, message: `✅ Provider is available on ${dayName} (${dayAvail.slots.map(s => s.start + '–' + s.end).join(', ')})` };
+  };
+
+  const availMatch = getAvailabilityMatch();
 
   const handleConfirm = async () => {
     if (!form.date || !form.timeFrom) { setError('Please fill in date and time.'); return; }
     setLoading(true);
     setError('');
     try {
-      await onConfirm({ ...form, budget: Number(form.budget) });
+      await onConfirm({
+        ...form,
+        budget: Number(form.budget),
+        clientLocation: clientLocation ? { coordinates: clientLocation, address: locAddress } : null,
+      });
     } catch (err) {
       setError(err.response?.data?.message || 'Booking failed.');
       setLoading(false);
     }
   };
 
+  // Provider availability display
+  const sortedAvail = provider.availability
+    ?.slice()
+    .sort((a, b) => DAYS_ORDER.indexOf(a.day) - DAYS_ORDER.indexOf(b.day)) || [];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#12121a] border border-white/10 rounded-2xl p-6 w-full max-w-sm">
-        <h3 className="font-bold text-lg mb-1">Book {provider.name}</h3>
-        <p className="text-white/40 text-sm mb-5">{provider.hourlyRate} {provider.currency}/hr</p>
+    <div
+      ref={overlayRef}
+      onClick={handleOverlayClick}
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-[#12121a] border border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto relative">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-white/50 hover:text-white"
+          aria-label="Close booking modal"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="1" y1="1" x2="13" y2="13" />
+            <line x1="13" y1="1" x2="1" y2="13" />
+          </svg>
+        </button>
+
+        <h3 className="font-bold text-lg mb-1 pr-8">Book {provider.name}</h3>
+        <p className="text-white/40 text-sm mb-4">{provider.specialty || ''} · {provider.hourlyRate} {provider.currency}/hr</p>
 
         {error && <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 text-xs text-red-300 mb-4">{error}</div>}
+
+        {/* Provider availability schedule */}
+        {sortedAvail.length > 0 && (
+          <div className="mb-4">
+            <label className="text-xs text-white/40 uppercase tracking-wider font-semibold">📅 Provider's Schedule</label>
+            <div className="mt-2 space-y-1">
+              {sortedAvail.map(a => (
+                <div key={a.day} className="flex items-center justify-between bg-white/[0.03] border border-white/10 rounded-lg px-3 py-1.5">
+                  <span className="text-xs font-medium capitalize text-white/60">{a.day}</span>
+                  <div className="flex gap-1.5">
+                    {a.slots?.map((slot, i) => (
+                      <span key={i} className="text-[10px] bg-green-500/10 border border-green-500/20 text-green-300 px-2 py-0.5 rounded">
+                        {slot.start} – {slot.end}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           <div>
@@ -72,10 +220,51 @@ function BookingModal({ provider, onClose, onConfirm }) {
             <input type="time" value={form.timeFrom} onChange={e => setForm({ ...form, timeFrom: e.target.value })}
               className="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/50" />
           </div>
+
+          {/* Availability match indicator */}
+          {availMatch && (
+            <div className={`rounded-lg px-3 py-2 text-xs border ${availMatch.match
+              ? 'bg-green-500/10 border-green-500/20 text-green-300'
+              : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+              }`}>
+              {availMatch.message}
+            </div>
+          )}
+
           <div>
             <label className="text-xs text-white/40 uppercase tracking-wider">Budget ({provider.currency})</label>
             <input type="number" placeholder="Optional" value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })}
               className="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50" />
+          </div>
+
+          {/* Location sharing */}
+          <div>
+            <label className="text-xs text-white/40 uppercase tracking-wider">📍 Share your location</label>
+            <button
+              type="button"
+              onClick={detectLocation}
+              disabled={detectingLoc}
+              className="mt-1 w-full flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:border-indigo-500/40 hover:bg-indigo-500/5 transition-all py-2.5 rounded-xl text-xs text-white/60 hover:text-white disabled:opacity-40"
+            >
+              {detectingLoc ? '📡 Detecting...' : clientLocation ? '📍 Update GPS Location' : '📍 Use GPS to share my location'}
+            </button>
+            
+            <div className="mt-2">
+              <input 
+                type="text" 
+                value={locAddress} 
+                onChange={(e) => {
+                  setLocAddress(e.target.value);
+                  // If they manually type without GPS, we just pass null coords with the manual string
+                  if (!clientLocation && e.target.value) setClientLocation([0, 0]); 
+                }}
+                placeholder="Or type your address manually..."
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50"
+              />
+            </div>
+            {(clientLocation || locAddress) && (
+              <p className="text-[10px] text-white/30 mt-1.5">🔒 Your location will only be shared with this provider after booking.</p>
+            )}
           </div>
         </div>
 
@@ -102,6 +291,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [bookingTarget, setBookingTarget] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState('');
+  const [viewProfileProvider, setViewProfileProvider] = useState(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -139,6 +329,7 @@ export default function Chat() {
       date: bookingData.date,
       timeFrom: bookingData.timeFrom,
       budget: bookingData.budget,
+      clientLocation: bookingData.clientLocation,
     });
     setBookingTarget(null);
     setBookingSuccess(`Booking request sent to ${provider.name}! They'll confirm shortly.`);
@@ -160,8 +351,16 @@ export default function Chat() {
         />
       )}
 
+      {viewProfileProvider && (
+        <ProfileViewModal
+          providerId={viewProfileProvider.id}
+          providerData={null}
+          onClose={() => setViewProfileProvider(null)}
+        />
+      )}
+
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
+      <nav className="relative z-50 flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
         <div className="flex items-center gap-3">
           <Link to="/dashboard" className="text-white/40 hover:text-white transition-colors text-sm">← Dashboard</Link>
           <span className="text-white/20">|</span>
@@ -170,7 +369,7 @@ export default function Chat() {
             <span className="text-sm font-medium">AI Assistant</span>
           </div>
         </div>
-        <span className="text-xs text-white/30 hidden sm:block">{user?.name}</span>
+        <UserMenu />
       </nav>
 
       {bookingSuccess && (
@@ -203,7 +402,12 @@ export default function Chat() {
                   )}
                 </div>
                 {msg.providers?.map((p, j) => (
-                  <ProviderCard key={j} provider={p} onBook={setBookingTarget} />
+                  <ProviderCard
+                    key={j}
+                    provider={p}
+                    onBook={setBookingTarget}
+                    onViewProfile={setViewProfileProvider}
+                  />
                 ))}
               </div>
               {msg.role === 'user' && (

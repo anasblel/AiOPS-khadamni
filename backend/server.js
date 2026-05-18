@@ -3,19 +3,19 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
+import { initSocket } from './src/socket.js';
 
 import authRoutes from './src/routes/auth.js';
 import providerRoutes from './src/routes/providers.js';
 import bookingRoutes from './src/routes/bookings.js';
 import chatRoutes from './src/routes/chat.js';
+import notificationRoutes from './src/routes/notifications.js';
 
 const app = express();
 const httpServer = createServer(app);
 
-export const io = new Server(httpServer, {
-  cors: { origin: 'http://localhost:5173', methods: ['GET', 'POST'] }
-});
+// Initialize socket.io via shared module
+const io = initSocket(httpServer);
 
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
@@ -25,20 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/chat', chatRoutes);
-
-// Socket.io connection
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-
-  socket.on('join', (userId) => {
-    socket.join(userId);
-    console.log(`User ${userId} joined room`);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
-});
+app.use('/api/notifications', notificationRoutes);
 
 // Connect to MongoDB then start server
 mongoose.connect(process.env.MONGO_URI)

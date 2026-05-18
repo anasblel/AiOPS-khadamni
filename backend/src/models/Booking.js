@@ -7,8 +7,17 @@ const bookingSchema = new mongoose.Schema({
   date: String,
   timeFrom: String,
   budget: Number,
-  status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'rejected'],
+    default: 'pending'
+  },
   providerMessage: String,
+  // Client location shared with provider on booking
+  clientLocation: {
+    coordinates: { type: [Number], default: undefined }, // [lat, lng]
+    address: { type: String, default: '' },
+  },
 }, { timestamps: true });
 
 export default mongoose.model('Booking', bookingSchema);

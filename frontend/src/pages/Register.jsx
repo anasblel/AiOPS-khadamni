@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 
 export default function Register() {
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'client' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'client', phone: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -102,6 +102,17 @@ export default function Register() {
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 required
               />
+            </div>
+            <div>
+              <label className="block text-xs text-white/50 mb-1.5 font-medium uppercase tracking-wider">Phone / WhatsApp</label>
+              <input
+                type="tel"
+                placeholder="+216 XX XXX XXX"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 focus:bg-white/[0.07] transition-all"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              />
+              <p className="text-xs text-white/30 mt-1">🔒 Only shared after a booking is accepted.</p>
             </div>
             <button
               type="submit"
