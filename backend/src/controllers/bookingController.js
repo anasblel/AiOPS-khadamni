@@ -53,6 +53,8 @@ export const createBooking = async (req, res) => {
 
     // Emit real-time notification via socket
     getIO().to(String(provider.user._id)).emit('notification', providerNotif);
+    getIO().to(String(provider.user._id)).emit('booking_update', { action: 'created', bookingId: booking._id });
+    getIO().to(String(req.user._id)).emit('booking_update', { action: 'created', bookingId: booking._id });
 
     res.status(201).json(booking);
   } catch (err) {
@@ -151,6 +153,10 @@ export const updateBookingStatus = async (req, res) => {
       // Emit real-time notifications
       getIO().to(String(booking.client._id)).emit('notification', clientNotif);
       getIO().to(String(providerDoc.user._id)).emit('notification', providerNotif);
+
+      // Emit booking update real-time
+      getIO().to(String(booking.client._id)).emit('booking_update', { action: 'status_changed', bookingId: booking._id, status: 'accepted' });
+      getIO().to(String(providerDoc.user._id)).emit('booking_update', { action: 'status_changed', bookingId: booking._id, status: 'accepted' });
     } else if (status === 'rejected') {
       const clientNotif = await Notification.create({
         user: booking.client._id,
@@ -168,7 +174,127 @@ export const updateBookingStatus = async (req, res) => {
         },
       });
       getIO().to(String(booking.client._id)).emit('notification', clientNotif);
+
+      // Emit booking update real-time
+      getIO().to(String(booking.client._id)).emit('booking_update', { action: 'status_changed', bookingId: booking._id, status: 'rejected' });
+      getIO().to(String(providerDoc.user._id)).emit('booking_update', { action: 'status_changed', bookingId: booking._id, status: 'rejected' });
     }
+
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// DELETE /api/bookings/:id
+export const deleteBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // Check authorization: must be either the client or the provider's user
+    const providerDoc = await Provider.findById(booking.provider);
+    const isClient = String(booking.client) === String(req.user._id);
+    const isProvider = providerDoc && String(providerDoc.user) === String(req.user._id);
+
+    if (!isClient && !isProvider) {
+      return res.status(403).json({ message: 'Not authorized to delete this booking' });
+    }
+
+    await Booking.findByIdAndDelete(req.params.id);
+
+    // Notify the other party about the cancellation/deletion
+    const targetUserId = isClient ? (providerDoc ? providerDoc.user : null) : booking.client;
+    if (targetUserId) {
+      const cancelNotif = await Notification.create({
+        user: targetUserId,
+        type: 'booking_deleted',
+        title: 'Booking Cancelled',
+        message: `${req.user.name} cancelled the booking for ${booking.skill} on ${booking.date}.`,
+      });
+      getIO().to(String(targetUserId)).emit('notification', cancelNotif);
+    }
+
+    // Emit booking update real-time
+    getIO().to(String(req.user._id)).emit('booking_update', { action: 'deleted', bookingId: booking._id });
+    if (targetUserId) {
+      getIO().to(String(targetUserId)).emit('booking_update', { action: 'deleted', bookingId: booking._id });
+    }
+
+    res.json({ message: 'Booking deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// PATCH /api/bookings/:id/complete
+export const completeBooking = async (req, res) => {
+  try {
+    if (req.user.role !== 'client') {
+      return res.status(403).json({ message: 'Only clients can complete bookings' });
+    }
+    const { rating, review } = req.body;
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: 'Rating is required and must be between 1 and 5' });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    if (String(booking.client) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Only the client who booked can complete it' });
+    }
+
+    if (booking.status !== 'accepted') {
+      return res.status(400).json({ message: 'Only accepted active bookings can be completed' });
+    }
+
+    booking.status = 'completed';
+    booking.rating = rating;
+    booking.review = review || '';
+    await booking.save();
+
+    // Recalculate average rating & totalBookings for the provider
+    const provider = await Provider.findById(booking.provider).populate('user', 'name');
+    if (provider) {
+      // Find all completed bookings for this provider
+      const completedBookings = await Booking.find({
+        provider: provider._id,
+        status: 'completed'
+      });
+
+      const totalBookings = completedBookings.length;
+      const sumRatings = completedBookings.reduce((sum, b) => sum + (b.rating || 0), 0);
+      const avgRating = totalBookings > 0 ? Number((sumRatings / totalBookings).toFixed(1)) : 0;
+
+      provider.rating = avgRating;
+      provider.totalBookings = totalBookings;
+      await provider.save();
+    }
+
+    // Create notification for provider
+    const providerNotif = await Notification.create({
+      user: provider.user._id,
+      type: 'booking_completed',
+      booking: booking._id,
+      title: 'Job Completed & Rated! ⭐',
+      message: `${req.user.name} marked the job for ${booking.skill} as completed and left a ${rating}-star rating.`,
+      bookingDetails: {
+        skill: booking.skill,
+        date: booking.date,
+        timeFrom: booking.timeFrom,
+        budget: booking.budget,
+        clientName: req.user.name,
+        providerName: provider.user.name,
+      },
+    });
+
+    // Emit real-time notification via socket
+    getIO().to(String(provider.user._id)).emit('notification', providerNotif);
+    
+    // Emit booking update real-time
+    getIO().to(String(booking.client)).emit('booking_update', { action: 'status_changed', bookingId: booking._id, status: 'completed' });
+    getIO().to(String(provider.user._id)).emit('booking_update', { action: 'status_changed', bookingId: booking._id, status: 'completed' });
 
     res.json(booking);
   } catch (err) {

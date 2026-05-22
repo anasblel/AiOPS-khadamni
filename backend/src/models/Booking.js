@@ -9,9 +9,11 @@ const bookingSchema = new mongoose.Schema({
   budget: Number,
   status: {
     type: String,
-    enum: ['pending', 'accepted', 'rejected'],
+    enum: ['pending', 'accepted', 'rejected', 'completed'],
     default: 'pending'
   },
+  rating: { type: Number, min: 1, max: 5 },
+  review: { type: String, default: '' },
   providerMessage: String,
   // Client location shared with provider on booking
   clientLocation: {

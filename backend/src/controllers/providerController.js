@@ -1,4 +1,37 @@
 import Provider, { JOB_FAMILIES } from '../models/Provider.js';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Multer config for CV uploads
+const cvStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../../uploads/cvs'));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `cv_${req.user._id}_${Date.now()}${ext}`);
+  }
+});
+
+const cvFileFilter = (req, file, cb) => {
+  const allowedTypes = ['.pdf', '.doc', '.docx'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowedTypes.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PDF, DOC, and DOCX files are allowed'), false);
+  }
+};
+
+export const uploadCvMiddleware = multer({
+  storage: cvStorage,
+  fileFilter: cvFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+}).single('cv');
 
 // GET /api/providers/job-families — return taxonomy for frontend
 export const getJobFamilies = async (req, res) => {
@@ -11,7 +44,12 @@ export const getProviders = async (req, res) => {
     const { skill, family, specialty } = req.query;
     const filter = {};
     if (family) filter.jobFamily = family;
-    if (specialty) filter.specialty = specialty;
+    if (specialty) {
+      filter.$or = [
+        { specialty: specialty },
+        { specialties: specialty }
+      ];
+    }
     if (skill) filter.skills = { $in: [new RegExp(skill, 'i')] };
 
     const providers = await Provider.find(filter)
@@ -56,7 +94,7 @@ export const updateMyProfile = async (req, res) => {
       return res.status(403).json({ message: 'Only providers can update a provider profile' });
     }
 
-    const { jobFamily, specialty, skills, city, coordinates, workMode, hourlyRate, currency, phone } = req.body;
+    const { jobFamily, specialty, specialties, skills, city, coordinates, workMode, hourlyRate, currency, phone } = req.body;
 
     // Feature 5: enforce workMode='in-person' for non-remote families
     const family = JOB_FAMILIES.find(f => f.id === jobFamily);
@@ -69,7 +107,8 @@ export const updateMyProfile = async (req, res) => {
 
     const updateData = {
       jobFamily: jobFamily || '',
-      specialty: specialty || '',
+      specialties: specialties || [],
+      specialty: (specialties && specialties.length > 0) ? specialties[0] : (specialty || ''),
       skills: skills || [],
       city: city || '',
       workMode: resolvedWorkMode,
@@ -109,6 +148,27 @@ export const updateAvailability = async (req, res) => {
       { new: true, upsert: true }
     );
     res.json({ availability: updated.availability });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// POST /api/providers/me/cv — upload CV file
+export const uploadCv = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded. Allowed types: PDF, DOC, DOCX (max 5MB).' });
+    }
+
+    const cvPath = `/uploads/cvs/${req.file.filename}`;
+
+    const updated = await Provider.findOneAndUpdate(
+      { user: req.user._id },
+      { cvPath },
+      { new: true }
+    ).populate('user', 'name email phone');
+
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

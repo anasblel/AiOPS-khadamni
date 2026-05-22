@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Chat from './pages/Chat';
 import Dashboard from './pages/Dashboard';
 import ProfileSetup from './pages/ProfileSetup';
+import DirectMessages from './pages/DirectMessages';
 
 export default function App() {
   return (
@@ -19,6 +20,8 @@ export default function App() {
           <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfileSetup /></ProtectedRoute>} />
+          <Route path="/messages" element={<ProtectedRoute><DirectMessages /></ProtectedRoute>} />
+          <Route path="/messages/:partnerId" element={<ProtectedRoute><DirectMessages /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>

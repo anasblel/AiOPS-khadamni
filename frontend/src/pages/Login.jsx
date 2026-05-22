@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -7,8 +7,71 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [newUser, setNewUser] = useState(null);
+  const [googleCredential, setGoogleCredential] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const initGoogle = () => {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback: handleGoogleResponse,
+        });
+        window.google.accounts.id.renderButton(
+          document.getElementById('google-signin-btn'),
+          { theme: 'dark', size: 'large', width: '100%', text: 'signin_with', shape: 'pill' }
+        );
+      } else {
+        setTimeout(initGoogle, 300);
+      }
+    };
+    initGoogle();
+  }, [newUser]);
+
+  const handleGoogleResponse = async (response) => {
+    setLoading(true);
+    setError('');
+    const credential = response.credential;
+    setGoogleCredential(credential);
+
+    try {
+      const { data } = await api.post('/auth/google', { credential });
+      if (data.isNewUser) {
+        setNewUser({ name: data.name, email: data.email });
+      } else {
+        login(data.user, data.accessToken, data.refreshToken);
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Google authentication failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignupWithRole = async (selectedRole) => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await api.post('/auth/google', {
+        credential: googleCredential,
+        role: selectedRole,
+      });
+      login(data.user, data.accessToken, data.refreshToken);
+      if (selectedRole === 'provider') {
+        navigate('/setup-profile');
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Google registration failed.');
+    } finally {
+      setLoading(false);
+      setNewUser(null);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -89,6 +152,21 @@ export default function Login() {
               ) : 'Sign in'}
             </button>
           </form>
+
+          {/* Google Divider */}
+          <div className="relative my-6 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <span className="relative z-10 px-3 bg-[#161622] text-xs text-white/35 font-medium uppercase tracking-wider">
+              Or continue with
+            </span>
+          </div>
+
+          {/* Google Sign-in Container */}
+          <div className="w-full flex justify-center">
+            <div id="google-signin-btn" className="w-full min-h-[44px]"></div>
+          </div>
         </div>
 
         <p className="text-center text-sm text-white/30 mt-6">
@@ -96,6 +174,49 @@ export default function Login() {
           <Link to="/register" className="text-indigo-400 hover:text-indigo-300 transition-colors">Create one</Link>
         </p>
       </div>
+
+      {/* Role Picker Modal for Google Signup */}
+      {newUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-md">
+          <div className="bg-[#12121a] border border-white/10 rounded-3xl p-8 w-full max-w-md relative shadow-2xl shadow-black/80">
+            <h3 className="font-extrabold text-xl text-white text-center mb-2">Complete your Registration</h3>
+            <p className="text-sm text-white/40 text-center mb-6">
+              Welcome, <span className="text-indigo-400 font-semibold">{newUser.name}</span>! Please select your role to finish signing up.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              <button
+                onClick={() => handleGoogleSignupWithRole('client')}
+                className="flex items-center justify-between p-5 rounded-2xl bg-white/[0.03] hover:bg-indigo-500/10 border border-white/5 hover:border-indigo-500/30 text-left transition-all group"
+              >
+                <div>
+                  <span className="block font-bold text-sm text-white group-hover:text-indigo-300">I am a Client</span>
+                  <span className="block text-xs text-white/40 mt-1">I want to hire AI and development specialists.</span>
+                </div>
+                <span className="text-2xl group-hover:scale-110 transition-transform">💼</span>
+              </button>
+
+              <button
+                onClick={() => handleGoogleSignupWithRole('provider')}
+                className="flex items-center justify-between p-5 rounded-2xl bg-white/[0.03] hover:bg-purple-500/10 border border-white/5 hover:border-purple-500/30 text-left transition-all group"
+              >
+                <div>
+                  <span className="block font-bold text-sm text-white group-hover:text-purple-300">I am a Provider</span>
+                  <span className="block text-xs text-white/40 mt-1">I want to offer freelance and consulting services.</span>
+                </div>
+                <span className="text-2xl group-hover:scale-110 transition-transform">🚀</span>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setNewUser(null)}
+              className="w-full mt-6 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 py-3 rounded-xl text-sm font-semibold transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

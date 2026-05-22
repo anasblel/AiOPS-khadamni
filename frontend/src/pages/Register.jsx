@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -10,6 +10,45 @@ export default function Register() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const initGoogle = () => {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback: handleGoogleResponse,
+        });
+        window.google.accounts.id.renderButton(
+          document.getElementById('google-signup-btn'),
+          { theme: 'dark', size: 'large', width: '100%', text: 'signup_with', shape: 'pill' }
+        );
+      } else {
+        setTimeout(initGoogle, 300);
+      }
+    };
+    initGoogle();
+  }, [form.role]);
+
+  const handleGoogleResponse = async (response) => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await api.post('/auth/google', {
+        credential: response.credential,
+        role: form.role,
+      });
+      login(data.user, data.accessToken, data.refreshToken);
+      if (form.role === 'provider') {
+        navigate('/setup-profile');
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Google registration failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
@@ -18,7 +57,7 @@ export default function Register() {
     try {
       const { data } = await api.post('/auth/register', form);
       login(data.user, data.accessToken, data.refreshToken);
-      navigate(data.user.role === 'provider' ? '/profile' : '/dashboard');
+      navigate(data.user.role === 'provider' ? '/setup-profile' : '/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed.');
     } finally {
@@ -130,6 +169,21 @@ export default function Register() {
               ) : `Create ${form.role} account`}
             </button>
           </form>
+
+          {/* Google Divider */}
+          <div className="relative my-6 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <span className="relative z-10 px-3 bg-[#161622] text-xs text-white/35 font-medium uppercase tracking-wider">
+              Or continue with
+            </span>
+          </div>
+
+          {/* Google Sign-up Container */}
+          <div className="w-full flex justify-center">
+            <div id="google-signup-btn" className="w-full min-h-[44px]"></div>
+          </div>
         </div>
 
         <p className="text-center text-sm text-white/30 mt-6">

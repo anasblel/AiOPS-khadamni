@@ -4,12 +4,18 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import { createServer } from 'http';
 import { initSocket } from './src/socket.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import authRoutes from './src/routes/auth.js';
 import providerRoutes from './src/routes/providers.js';
 import bookingRoutes from './src/routes/bookings.js';
 import chatRoutes from './src/routes/chat.js';
 import notificationRoutes from './src/routes/notifications.js';
+import messageRoutes from './src/routes/messages.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const httpServer = createServer(app);
@@ -20,12 +26,16 @@ const io = initSocket(httpServer);
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
 
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Connect to MongoDB then start server
 mongoose.connect(process.env.MONGO_URI)

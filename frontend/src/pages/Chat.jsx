@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import ProfileViewModal from '../components/ProfileViewModal';
-import UserMenu from '../components/UserMenu';
+import Navbar from '../components/Navbar';
 
 const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -99,8 +99,10 @@ function BookingModal({ provider, onClose, onConfirm }) {
           const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords[0]}&lon=${coords[1]}`);
           const data = await resp.json();
           if (data && data.address) {
-            const { road, suburb, city, town, village, state } = data.address;
-            const parts = [road, suburb, city || town || village || state].filter(Boolean);
+            const road = data.address.road || data.address.street || data.address.pedestrian;
+            const suburb = data.address.suburb || data.address.neighbourhood || data.address.quarter;
+            const cityOrTown = data.address.city || data.address.town || data.address.municipality || data.address.county || data.address.village || data.address.hamlet || data.address.state;
+            const parts = [road, suburb, cityOrTown].filter(Boolean);
             setLocAddress(parts.join(', ') || data.display_name);
           } else {
             setLocAddress(data.display_name || `${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}`);
@@ -159,11 +161,11 @@ function BookingModal({ provider, onClose, onConfirm }) {
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center px-4 py-6 sm:py-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-[#12121a] border border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto relative">
+      <div className="bg-[#12121a] border border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[calc(100vh-3rem)] overflow-y-auto relative my-auto">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -284,15 +286,22 @@ function BookingModal({ provider, onClose, onConfirm }) {
 
 export default function Chat() {
   const { user } = useAuth();
-  const [messages, setMessages] = useState([
-    { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
-  ]);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem('aiops_chat_history');
+    return saved ? JSON.parse(saved) : [
+      { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
+    ];
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingTarget, setBookingTarget] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState('');
   const [viewProfileProvider, setViewProfileProvider] = useState(null);
   const bottomRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('aiops_chat_history', JSON.stringify(messages));
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -359,18 +368,31 @@ export default function Chat() {
         />
       )}
 
-      {/* Nav */}
-      <nav className="relative z-50 flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
-        <div className="flex items-center gap-3">
-          <Link to="/dashboard" className="text-white/40 hover:text-white transition-colors text-sm">← Dashboard</Link>
-          <span className="text-white/20">|</span>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-sm font-medium">AI Assistant</span>
-          </div>
-        </div>
-        <UserMenu />
-      </nav>
+      <Navbar />
+
+      {/* Header bar with New Chat */}
+      <div className="relative z-10 mx-auto w-full max-w-2xl px-4 pt-6 flex justify-between items-center shrink-0">
+        <h2 className="text-sm font-semibold text-white/50 flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+          AI Chat Assistant
+        </h2>
+        <button
+          onClick={() => {
+            if (window.confirm("Start a new chat? This will clear the current session history.")) {
+              localStorage.removeItem('aiops_chat_history');
+              setMessages([
+                { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
+              ]);
+            }
+          }}
+          className="text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 hover:bg-indigo-500/20 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New Chat
+        </button>
+      </div>
 
       {bookingSuccess && (
         <div className="relative z-10 mx-auto w-full max-w-2xl px-4 pt-4">

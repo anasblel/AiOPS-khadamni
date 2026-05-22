@@ -80,6 +80,7 @@ const providerSchema = new mongoose.Schema({
   // Feature 1 — Job family + specialty
   jobFamily: { type: String, default: '' },           // e.g. "software"
   specialty: { type: String, default: '' },           // e.g. "React Developer"
+  specialties: { type: [String], default: [] },       // e.g. ["React Developer", "Node.js Developer"]
   skills: [String],                                   // extra tags, free-form
 
   // Feature 2 — Location (GeoJSON point + human city label)
@@ -102,6 +103,7 @@ const providerSchema = new mongoose.Schema({
   currency: { type: String, default: 'TND' },
   rating: { type: Number, default: 0 },
   totalBookings: { type: Number, default: 0 },
+  cvPath: { type: String, default: '' },
 }, { timestamps: true });
 
 providerSchema.index({ location: '2dsphere' });

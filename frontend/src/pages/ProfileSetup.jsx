@@ -13,7 +13,8 @@ export default function ProfileSetup() {
 
   // Feature 1 — family + specialty
   const [selectedFamily, setSelectedFamily] = useState(null);
-  const [specialty, setSpecialty] = useState('');
+  const [selectedSpecialties, setSelectedSpecialties] = useState([]);
+  const [hasCustom, setHasCustom] = useState(false);
   const [customSpecialty, setCustomSpecialty] = useState('');
 
   // Feature 2 — location
@@ -29,12 +30,70 @@ export default function ProfileSetup() {
   // Feature 4 — phone
   const [phone, setPhone] = useState('');
 
+  // CV upload
+  const [cvFile, setCvFile] = useState(null);
+
   // Rate
   const [hourlyRate, setHourlyRate] = useState('');
   const [currency, setCurrency] = useState('TND');
 
   useEffect(() => {
-    api.get('/providers/job-families').then(r => setFamilies(r.data)).catch(() => {});
+    const loadData = async () => {
+      try {
+        const famRes = await api.get('/providers/job-families');
+        setFamilies(famRes.data);
+
+        // Fetch existing profile
+        const profRes = await api.get('/providers/me');
+        const profile = profRes.data;
+        if (profile) {
+          if (profile.jobFamily) {
+            const foundFam = famRes.data.find(f => f.id === profile.jobFamily);
+            if (foundFam) {
+              setSelectedFamily(foundFam);
+              
+              if (profile.specialties && profile.specialties.length > 0) {
+                const standardSpecialties = profile.specialties.filter(sp => foundFam.specialties.includes(sp));
+                const customSpecialties = profile.specialties.filter(sp => !foundFam.specialties.includes(sp));
+                setSelectedSpecialties(standardSpecialties);
+                if (customSpecialties.length > 0) {
+                  setHasCustom(true);
+                  setCustomSpecialty(customSpecialties.join(', '));
+                }
+              } else if (profile.specialty) {
+                if (foundFam.specialties.includes(profile.specialty)) {
+                  setSelectedSpecialties([profile.specialty]);
+                } else {
+                  setHasCustom(true);
+                  setCustomSpecialty(profile.specialty);
+                }
+              }
+            }
+          }
+          if (profile.city) setCity(profile.city);
+          if (profile.phone) setPhone(profile.phone);
+          if (profile.hourlyRate) setHourlyRate(String(profile.hourlyRate));
+          if (profile.currency) setCurrency(profile.currency);
+          if (profile.workMode) setWorkMode(profile.workMode);
+          if (profile.location?.coordinates?.length === 2) {
+            setCoordinates([profile.location.coordinates[1], profile.location.coordinates[0]]); // [lat, lng]
+          }
+          if (profile.availability && profile.availability.length > 0) {
+            setAvailability(DAYS.map(dayName => {
+              const existing = profile.availability.find(a => a.day === dayName);
+              return {
+                day: dayName,
+                enabled: !!existing,
+                slots: existing?.slots || [{ start: '09:00', end: '17:00' }]
+              };
+            }));
+          }
+        }
+      } catch (err) {
+        // Ignore errors (e.g. 404 profile not found on first time setup)
+      }
+    };
+    loadData();
   }, []);
 
   // Feature 5: remote is auto-determined by family
@@ -43,7 +102,8 @@ export default function ProfileSetup() {
 
   const handleFamilySelect = (family) => {
     setSelectedFamily(family);
-    setSpecialty('');
+    setSelectedSpecialties([]);
+    setHasCustom(false);
     setCustomSpecialty('');
     if (!family.remoteAllowed) setWorkMode('in-person');
   };
@@ -82,13 +142,18 @@ export default function ProfileSetup() {
     setSaving(true);
     setError('');
     try {
-      const resolvedSpecialty = specialty === '__custom__' ? customSpecialty : specialty;
+      const resolvedSpecialties = [...selectedSpecialties];
+      if (hasCustom && customSpecialty.trim()) {
+        const customs = customSpecialty.split(',').map(s => s.trim()).filter(Boolean);
+        resolvedSpecialties.push(...customs);
+      }
       const enabledDays = availability.filter(d => d.enabled);
 
       await api.put('/providers/me', {
         jobFamily: selectedFamily.id,
-        specialty: resolvedSpecialty,
-        skills: resolvedSpecialty ? [resolvedSpecialty] : [],
+        specialties: resolvedSpecialties,
+        specialty: resolvedSpecialties.length > 0 ? resolvedSpecialties[0] : '',
+        skills: resolvedSpecialties,
         city,
         coordinates,  // [lat, lng] or null
         workMode: remoteAllowed ? workMode : 'in-person',
@@ -100,6 +165,15 @@ export default function ProfileSetup() {
       if (enabledDays.length > 0) {
         await api.put('/providers/me/availability', {
           availability: enabledDays.map(d => ({ day: d.day, slots: d.slots }))
+        });
+      }
+
+      // Upload CV if selected
+      if (cvFile) {
+        const formData = new FormData();
+        formData.append('cv', cvFile);
+        await api.post('/providers/me/cv', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
       }
 
@@ -184,32 +258,39 @@ export default function ProfileSetup() {
             <div>
               <h2 className="font-bold text-lg mb-1">What's your specialty?</h2>
               <p className="text-white/40 text-sm mb-5">
-                <span className="text-white">{selectedFamily.icon} {selectedFamily.label}</span> — pick your specific role
+                <span className="text-white">{selectedFamily.icon} {selectedFamily.label}</span> — pick your specific roles (select one or more)
               </p>
               <div className="flex flex-wrap gap-2 mb-4">
-                {selectedFamily.specialties.map(sp => (
-                  <button key={sp} type="button" onClick={() => setSpecialty(sp)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                      specialty === sp
-                        ? 'bg-indigo-600 border-indigo-500 text-white'
-                        : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
-                    }`}>
-                    {sp}
-                  </button>
-                ))}
-                <button type="button" onClick={() => setSpecialty('__custom__')}
+                {selectedFamily.specialties.map(sp => {
+                  const isSelected = selectedSpecialties.includes(sp);
+                  return (
+                    <button key={sp} type="button" onClick={() => {
+                      setSelectedSpecialties(prev =>
+                        prev.includes(sp) ? prev.filter(x => x !== sp) : [...prev, sp]
+                      );
+                    }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-500 text-white'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
+                      }`}>
+                      {sp} {isSelected && '✓'}
+                    </button>
+                  );
+                })}
+                <button type="button" onClick={() => setHasCustom(!hasCustom)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                    specialty === '__custom__'
+                    hasCustom
                       ? 'bg-purple-600 border-purple-500 text-white'
                       : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
                   }`}>
-                  + Other
+                  + Other {hasCustom && '✓'}
                 </button>
               </div>
-              {specialty === '__custom__' && (
+              {hasCustom && (
                 <input
                   type="text"
-                  placeholder="Describe your specialty..."
+                  placeholder="Describe other specialties (comma separated)..."
                   value={customSpecialty}
                   onChange={e => setCustomSpecialty(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 transition-all"
@@ -338,13 +419,34 @@ export default function ProfileSetup() {
                 <p className="text-xs text-white/30 mt-2">🔒 Only shown to clients after a booking is accepted.</p>
               </div>
 
+              {/* CV Upload */}
+              <div>
+                <label className="text-xs text-white/40 uppercase tracking-wider mb-1.5 block">Upload CV / Resume (optional)</label>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={(e) => setCvFile(e.target.files[0] || null)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 transition-all cursor-pointer"
+                />
+                {cvFile && (
+                  <p className="text-xs text-green-300 mt-1.5">📄 {cvFile.name} selected</p>
+                )}
+                <p className="text-xs text-white/30 mt-1.5">PDF, DOC or DOCX · Max 5 MB · Clients can view your CV when booking.</p>
+              </div>
+
               {/* Summary */}
               <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-4 py-4 space-y-1 text-xs">
                 <p className="text-indigo-300 font-semibold uppercase tracking-wider mb-2">Summary</p>
-                <p className="text-white/60">🏷 <span className="text-white">{selectedFamily?.label} — {specialty === '__custom__' ? customSpecialty : specialty}</span></p>
+                <p className="text-white/60">🏷 <span className="text-white">{selectedFamily?.label} — {
+                  [
+                    ...selectedSpecialties,
+                    ...(hasCustom && customSpecialty.trim() ? customSpecialty.split(',').map(s => s.trim()).filter(Boolean) : [])
+                  ].join(', ') || 'No specialty selected'
+                }</span></p>
                 <p className="text-white/60">📍 <span className="text-white">{city || 'No city set'}</span>{!remoteAllowed ? ' (in-person only)' : workMode === 'both' ? ' · Remote & In-person' : workMode === 'remote' ? ' · Remote' : ' · In-person'}</p>
                 <p className="text-white/60">📅 <span className="text-white">{availability.filter(d => d.enabled).map(d => d.day).join(', ') || 'No days set'}</span></p>
                 <p className="text-white/60">💰 <span className="text-white">{hourlyRate || '—'} {currency}/hr</span></p>
+                {cvFile && <p className="text-white/60">📄 <span className="text-white">CV: {cvFile.name}</span></p>}
               </div>
             </div>
           )}
@@ -363,7 +465,7 @@ export default function ProfileSetup() {
               onClick={() => { setError(''); setStep(step + 1); }}
               disabled={
                 (step === 1 && !selectedFamily) ||
-                (step === 2 && !specialty && !customSpecialty)
+                (step === 2 && selectedSpecialties.length === 0 && (!hasCustom || !customSpecialty.trim()))
               }
               className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all py-3 rounded-xl font-semibold text-sm">
               Continue →
