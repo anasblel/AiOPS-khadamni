@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 import api from '../api/axios';
 import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
+import ThemeToggle from './ThemeToggle';
 
 export default function Navbar() {
   const { user } = useAuth();
@@ -70,6 +71,14 @@ export default function Navbar() {
           >
             Direct Messages
           </Link>
+          {user.role === 'admin' && (
+            <Link
+              to="/admin"
+              className={`transition-colors ${location.pathname === '/admin' ? 'text-indigo-400' : 'text-white/60 hover:text-white'}`}
+            >
+              Admin Panel
+            </Link>
+          )}
         </div>
       </div>
 
@@ -95,6 +104,7 @@ export default function Navbar() {
           )}
         </Link>
 
+        <ThemeToggle />
         <NotificationBell />
         <UserMenu />
       </div>

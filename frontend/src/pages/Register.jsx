@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import PasswordInput from '../components/PasswordInput';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'client', phone: '' });
@@ -38,7 +40,7 @@ export default function Register() {
       });
       login(data.user, data.accessToken, data.refreshToken);
       if (form.role === 'provider') {
-        navigate('/setup-profile');
+        navigate('/profile');
       } else {
         navigate('/dashboard');
       }
@@ -57,7 +59,7 @@ export default function Register() {
     try {
       const { data } = await api.post('/auth/register', form);
       login(data.user, data.accessToken, data.refreshToken);
-      navigate(data.user.role === 'provider' ? '/setup-profile' : '/dashboard');
+      navigate(data.user.role === 'provider' ? '/profile' : '/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed.');
     } finally {
@@ -73,6 +75,22 @@ export default function Register() {
       }} />
       <div className="fixed bottom-[-100px] left-[10%] w-[400px] h-[400px] rounded-full pointer-events-none"
         style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.1) 0%, transparent 70%)' }} />
+
+      {/* Top utility bar — Back to Home + theme toggle */}
+      <div className="fixed top-4 left-4 right-4 z-20 flex items-center justify-between">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl px-3 py-2 transition-all"
+          aria-label="Back to home"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          <span>Back to home</span>
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
@@ -133,13 +151,12 @@ export default function Register() {
             </div>
             <div>
               <label className="block text-xs text-white/50 mb-1.5 font-medium uppercase tracking-wider">Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 placeholder="Min 6 characters"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 focus:bg-white/[0.07] transition-all"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 required
+                autoComplete="new-password"
               />
             </div>
             <div>

@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: function() { return !this.googleId; } },
   googleId: { type: String, unique: true, sparse: true },
-  role: { type: String, enum: ['client', 'provider'], required: true },
+  role: { type: String, enum: ['client', 'provider', 'admin'], required: true },
   // Feature 4 — phone for clients too (shown after booking accepted)
   phone: { type: String, default: '' },
   address: { type: String, default: '' },

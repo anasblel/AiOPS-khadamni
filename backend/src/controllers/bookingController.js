@@ -11,6 +11,20 @@ export const createBooking = async (req, res) => {
       return res.status(403).json({ message: 'Only clients can create bookings' });
     }
     const { providerId, skill, date, timeFrom, budget, clientLocation } = req.body;
+
+    // Block bookings on past/expired dates.
+    if (date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const picked = new Date(`${date}T00:00:00`);
+      if (isNaN(picked.getTime())) {
+        return res.status(400).json({ message: 'Invalid booking date.' });
+      }
+      if (picked < today) {
+        return res.status(400).json({ message: 'You cannot book on a past date. Please choose today or a future date.' });
+      }
+    }
+
     const provider = await Provider.findById(providerId).populate('user', 'name email phone');
     if (!provider) return res.status(404).json({ message: 'Provider not found' });
 
