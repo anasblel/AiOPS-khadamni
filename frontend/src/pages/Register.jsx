@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
 import PasswordInput from '../components/PasswordInput';
 import ThemeToggle from '../components/ThemeToggle';
@@ -10,6 +11,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { theme } = useTheme();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,14 +23,20 @@ export default function Register() {
         });
         window.google.accounts.id.renderButton(
           document.getElementById('google-signup-btn'),
-          { theme: 'dark', size: 'large', width: '100%', text: 'signup_with', shape: 'pill' }
+          { 
+            theme: theme === 'dark' ? 'filled_black' : 'outline', 
+            size: 'large', 
+            width: 320, 
+            text: 'continue_with', 
+            shape: 'pill' 
+          }
         );
       } else {
         setTimeout(initGoogle, 300);
       }
     };
     initGoogle();
-  }, [form.role]);
+  }, [form.role, theme]);
 
   const handleGoogleResponse = async (response) => {
     setLoading(true);
@@ -199,7 +207,7 @@ export default function Register() {
 
           {/* Google Sign-up Container */}
           <div className="w-full flex justify-center">
-            <div id="google-signup-btn" className="w-full min-h-[44px]"></div>
+            <div id="google-signup-btn" className="w-full min-h-[44px] flex justify-center"></div>
           </div>
         </div>
 
