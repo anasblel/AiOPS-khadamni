@@ -40,7 +40,7 @@ export default function Landing() {
           Type what you need in plain language. Our AI finds an available, matching provider — no browsing, no waiting, no ghosting.
         </p>
         <div className="flex items-center gap-4 justify-center flex-wrap">
-          <Link to="/register" className="bg-indigo-600 hover:bg-indigo-500 transition-all px-8 py-3.5 rounded-xl font-semibold text-base shadow-lg shadow-indigo-500/20 hover:-translate-y-0.5">Get Started</Link>
+          <Link to="/register" className="bg-indigo-600 hover:bg-indigo-500 transition-all px-8 py-3.5 rounded-xl font-semibold text-base shadow-lg shadow-indigo-500/20 hover:-translate-y-0.5">Start for free</Link>
           <Link to="/login" className="bg-white/5 hover:bg-white/10 border border-white/10 transition-all px-8 py-3.5 rounded-xl font-semibold text-base hover:-translate-y-0.5">Sign in</Link>
         </div>
 
