@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
 
 export default function UserMenu() {
   const { user, logout, login: updateUser } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editingPhone, setEditingPhone] = useState(false);
@@ -325,6 +327,20 @@ export default function UserMenu() {
               Dashboard
             </Link>
 
+            {user?.role === 'admin' && (
+              <Link
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 px-5 py-2.5 text-sm text-white/60 hover:text-white hover:bg-white/[0.04] transition-all"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M12 8v8M8 12h8" />
+                </svg>
+                Admin Panel
+              </Link>
+            )}
+
             {user?.role === 'client' && (
               <Link
                 to="/chat"
@@ -337,6 +353,37 @@ export default function UserMenu() {
                 AI Assistant
               </Link>
             )}
+          </div>
+
+          {/* Appearance / theme toggle */}
+          <div className="border-t border-white/5 px-5 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-base leading-none">{theme === 'dark' ? '🌙' : '☀️'}</span>
+                <div>
+                  <div className="text-xs font-semibold text-white/70">Appearance</div>
+                  <div className="text-[10px] text-white/40 capitalize">{theme} mode</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                role="switch"
+                aria-checked={theme === 'dark'}
+                aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+                className={`relative w-11 h-6 rounded-full border transition-colors ${
+                  theme === 'dark'
+                    ? 'bg-indigo-600/80 border-indigo-500/60'
+                    : 'bg-white/15 border-white/20'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-md transition-transform ${
+                    theme === 'dark' ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* Logout */}

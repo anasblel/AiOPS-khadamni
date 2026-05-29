@@ -13,6 +13,10 @@ import bookingRoutes from './src/routes/bookings.js';
 import chatRoutes from './src/routes/chat.js';
 import notificationRoutes from './src/routes/notifications.js';
 import messageRoutes from './src/routes/messages.js';
+import { seedAdmin } from './src/utils/seedAdmin.js';
+import adminRoutes from './src/routes/admin.js';
+
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,11 +40,14 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/admin', adminRoutes);
+
 
 // Connect to MongoDB then start server
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log('MongoDB connected');
+    await seedAdmin();
     httpServer.listen(process.env.PORT, () => {
       console.log(`Server running on port ${process.env.PORT}`);
     });

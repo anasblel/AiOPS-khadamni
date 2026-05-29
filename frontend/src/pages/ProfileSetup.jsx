@@ -10,12 +10,17 @@ export default function ProfileSetup() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [families, setFamilies] = useState([]);
+  const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
+  const [newJobQuery, setNewJobQuery] = useState('');
+  const [categorizing, setCategorizing] = useState(false);
 
-  // Feature 1 — family + specialty
-  const [selectedFamily, setSelectedFamily] = useState(null);
-  const [selectedSpecialties, setSelectedSpecialties] = useState([]);
-  const [hasCustom, setHasCustom] = useState(false);
-  const [customSpecialty, setCustomSpecialty] = useState('');
+  // Feature 1 — multi-family + per-family specialties
+  // selectedFamilies: array of full family objects
+  // specialtiesByFamily: { [familyId]: [string, ...] }
+  // customByFamily:     { [familyId]: 'comma,separated,strings' }
+  const [selectedFamilies, setSelectedFamilies] = useState([]);
+  const [specialtiesByFamily, setSpecialtiesByFamily] = useState({});
+  const [customByFamily, setCustomByFamily] = useState({});
 
   // Feature 2 — location
   const [city, setCity] = useState('');
@@ -47,28 +52,44 @@ export default function ProfileSetup() {
         const profRes = await api.get('/providers/me');
         const profile = profRes.data;
         if (profile) {
-          if (profile.jobFamily) {
-            const foundFam = famRes.data.find(f => f.id === profile.jobFamily);
-            if (foundFam) {
-              setSelectedFamily(foundFam);
-              
-              if (profile.specialties && profile.specialties.length > 0) {
-                const standardSpecialties = profile.specialties.filter(sp => foundFam.specialties.includes(sp));
-                const customSpecialties = profile.specialties.filter(sp => !foundFam.specialties.includes(sp));
-                setSelectedSpecialties(standardSpecialties);
-                if (customSpecialties.length > 0) {
-                  setHasCustom(true);
-                  setCustomSpecialty(customSpecialties.join(', '));
-                }
-              } else if (profile.specialty) {
-                if (foundFam.specialties.includes(profile.specialty)) {
-                  setSelectedSpecialties([profile.specialty]);
-                } else {
-                  setHasCustom(true);
-                  setCustomSpecialty(profile.specialty);
-                }
-              }
+          // Migrate from any of (preferred → legacy):
+          //   professions:[{family, specialties:[]}] → jobFamilies:[id]+specialties:[] → jobFamily:id+specialties/specialty
+          let professions = Array.isArray(profile.professions) && profile.professions.length > 0
+            ? profile.professions
+            : [];
+          if (professions.length === 0 && Array.isArray(profile.jobFamilies) && profile.jobFamilies.length > 0) {
+            professions = profile.jobFamilies.map(fid => ({
+              family: fid,
+              specialties: profile.specialties || (profile.specialty ? [profile.specialty] : []),
+            }));
+          }
+          if (professions.length === 0 && profile.jobFamily) {
+            professions = [{
+              family: profile.jobFamily,
+              specialties: profile.specialties && profile.specialties.length > 0
+                ? profile.specialties
+                : (profile.specialty ? [profile.specialty] : []),
+            }];
+          }
+
+          const fams = [];
+          const specMap = {};
+          const customMap = {};
+          professions.forEach(prof => {
+            const foundFam = famRes.data.find(f => f.id === prof.family);
+            if (!foundFam) return;
+            fams.push(foundFam);
+            const standardSpecialties = (prof.specialties || []).filter(sp => foundFam.specialties.includes(sp));
+            const customSpecialties = (prof.specialties || []).filter(sp => !foundFam.specialties.includes(sp));
+            specMap[foundFam.id] = standardSpecialties;
+            if (customSpecialties.length > 0) {
+              customMap[foundFam.id] = customSpecialties.join(', ');
             }
+          });
+          if (fams.length > 0) {
+            setSelectedFamilies(fams);
+            setSpecialtiesByFamily(specMap);
+            setCustomByFamily(customMap);
           }
           if (profile.city) setCity(profile.city);
           if (profile.phone) setPhone(profile.phone);
@@ -96,16 +117,75 @@ export default function ProfileSetup() {
     loadData();
   }, []);
 
-  // Feature 5: remote is auto-determined by family
-  const remoteAllowed = selectedFamily?.remoteAllowed !== false;
+  // Feature 5: remote is allowed if ANY selected family allows it.
+  const remoteAllowed = selectedFamilies.length === 0
+    ? true
+    : selectedFamilies.some(f => f.remoteAllowed !== false);
   const [workMode, setWorkMode] = useState('in-person');
 
-  const handleFamilySelect = (family) => {
-    setSelectedFamily(family);
-    setSelectedSpecialties([]);
-    setHasCustom(false);
-    setCustomSpecialty('');
-    if (!family.remoteAllowed) setWorkMode('in-person');
+  const toggleFamily = (family) => {
+    setSelectedFamilies(prev => {
+      const exists = prev.some(f => f.id === family.id);
+      if (exists) {
+        // Deselecting — also drop its specialties + custom entries.
+        setSpecialtiesByFamily(s => {
+          const copy = { ...s };
+          delete copy[family.id];
+          return copy;
+        });
+        setCustomByFamily(c => {
+          const copy = { ...c };
+          delete copy[family.id];
+          return copy;
+        });
+        const next = prev.filter(f => f.id !== family.id);
+        // If all remaining families are in-person only, force in-person.
+        if (next.length > 0 && !next.some(f => f.remoteAllowed !== false)) {
+          setWorkMode('in-person');
+        }
+        return next;
+      }
+      return [...prev, family];
+    });
+  };
+
+  const toggleSpecialty = (familyId, specialty) => {
+    setSpecialtiesByFamily(prev => {
+      const current = prev[familyId] || [];
+      const next = current.includes(specialty)
+        ? current.filter(s => s !== specialty)
+        : [...current, specialty];
+      return { ...prev, [familyId]: next };
+    });
+  };
+
+  const setCustomFor = (familyId, value) => {
+    setCustomByFamily(prev => ({ ...prev, [familyId]: value }));
+  };
+
+  const handleAddFamily = async () => {
+    if (!newJobQuery.trim()) return;
+    setCategorizing(true);
+    setError('');
+    try {
+      const res = await api.post('/providers/job-families/suggest', { query: newJobQuery });
+      const newFamily = res.data;
+
+      // Append to families if not already in the list
+      setFamilies(prev => {
+        if (prev.some(f => f.id === newFamily.id)) return prev;
+        return [...prev, newFamily];
+      });
+
+      // Auto-select it (additive — doesn't deselect anything already chosen).
+      setSelectedFamilies(prev => prev.some(f => f.id === newFamily.id) ? prev : [...prev, newFamily]);
+      setShowAddFamilyModal(false);
+      setNewJobQuery('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to suggest job family.');
+    } finally {
+      setCategorizing(false);
+    }
   };
 
   // Feature 2: GPS detect
@@ -135,25 +215,32 @@ export default function ProfileSetup() {
   };
 
   const handleSave = async () => {
-    if (!selectedFamily) { setError('Please select a job family.'); return; }
+    if (selectedFamilies.length === 0) { setError('Please select at least one job family.'); return; }
     if (!hourlyRate || Number(hourlyRate) <= 0) { setError('Please enter a valid hourly rate.'); return; }
     if (!phone.trim()) { setError('Please enter a phone number.'); return; }
 
     setSaving(true);
     setError('');
     try {
-      const resolvedSpecialties = [...selectedSpecialties];
-      if (hasCustom && customSpecialty.trim()) {
-        const customs = customSpecialty.split(',').map(s => s.trim()).filter(Boolean);
-        resolvedSpecialties.push(...customs);
-      }
+      const professions = selectedFamilies.map(fam => {
+        const baseSpecs = specialtiesByFamily[fam.id] || [];
+        const customRaw = customByFamily[fam.id] || '';
+        const customs = customRaw.split(',').map(s => s.trim()).filter(Boolean);
+        return {
+          family: fam.id,
+          specialties: [...baseSpecs, ...customs],
+        };
+      });
+      const flatSpecialties = [...new Set(professions.flatMap(p => p.specialties))];
       const enabledDays = availability.filter(d => d.enabled);
 
       await api.put('/providers/me', {
-        jobFamily: selectedFamily.id,
-        specialties: resolvedSpecialties,
-        specialty: resolvedSpecialties.length > 0 ? resolvedSpecialties[0] : '',
-        skills: resolvedSpecialties,
+        professions,
+        // Backwards-compat hints (server normalizes anyway):
+        jobFamily: selectedFamilies[0].id,
+        specialties: flatSpecialties,
+        specialty: flatSpecialties[0] || '',
+        skills: flatSpecialties,
         city,
         coordinates,  // [lat, lng] or null
         workMode: remoteAllowed ? workMode : 'in-person',
@@ -226,76 +313,95 @@ export default function ProfileSetup() {
 
         <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-6">
 
-          {/* ── Step 1: Job Family ── */}
+          {/* ── Step 1: Job Families (multi-select) ── */}
           {step === 1 && (
             <div>
               <h2 className="font-bold text-lg mb-1">What's your field?</h2>
-              <p className="text-white/40 text-sm mb-5">Choose the family that best describes your work</p>
+              <p className="text-white/40 text-sm mb-5">Pick one or more families that describe your work</p>
               <div className="grid grid-cols-2 gap-2">
-                {families.map(family => (
-                  <button key={family.id} type="button" onClick={() => handleFamilySelect(family)}
-                    className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
-                      selectedFamily?.id === family.id
-                        ? 'border-indigo-500/60 bg-indigo-600/15 text-white'
-                        : 'border-white/10 bg-white/5 text-white/50 hover:text-white hover:border-white/20'
-                    }`}>
-                    <span className="text-xl">{family.icon}</span>
-                    <div>
-                      <div className="font-semibold text-xs">{family.label}</div>
-                      {!family.remoteAllowed && (
-                        <div className="text-xs text-amber-400/70 mt-0.5">📍 In-person only</div>
-                      )}
-                    </div>
-                    {selectedFamily?.id === family.id && <span className="ml-auto text-indigo-400">✓</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 2: Specialty ── */}
-          {step === 2 && selectedFamily && (
-            <div>
-              <h2 className="font-bold text-lg mb-1">What's your specialty?</h2>
-              <p className="text-white/40 text-sm mb-5">
-                <span className="text-white">{selectedFamily.icon} {selectedFamily.label}</span> — pick your specific roles (select one or more)
-              </p>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {selectedFamily.specialties.map(sp => {
-                  const isSelected = selectedSpecialties.includes(sp);
+                {families.map(family => {
+                  const isSelected = selectedFamilies.some(f => f.id === family.id);
                   return (
-                    <button key={sp} type="button" onClick={() => {
-                      setSelectedSpecialties(prev =>
-                        prev.includes(sp) ? prev.filter(x => x !== sp) : [...prev, sp]
-                      );
-                    }}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                    <button key={family.id} type="button" onClick={() => toggleFamily(family)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
                         isSelected
-                          ? 'bg-indigo-600 border-indigo-500 text-white'
-                          : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
+                          ? 'border-indigo-500/60 bg-indigo-600/15 text-white'
+                          : 'border-white/10 bg-white/5 text-white/50 hover:text-white hover:border-white/20'
                       }`}>
-                      {sp} {isSelected && '✓'}
+                      <span className="text-xl">{family.icon}</span>
+                      <div>
+                        <div className="font-semibold text-xs">{family.label}</div>
+                        {!family.remoteAllowed && (
+                          <div className="text-xs text-amber-400/70 mt-0.5">📍 In-person only</div>
+                        )}
+                      </div>
+                      {isSelected && <span className="ml-auto text-indigo-400">✓</span>}
                     </button>
                   );
                 })}
-                <button type="button" onClick={() => setHasCustom(!hasCustom)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                    hasCustom
-                      ? 'bg-purple-600 border-purple-500 text-white'
-                      : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
-                  }`}>
-                  + Other {hasCustom && '✓'}
+
+                <button type="button" onClick={() => setShowAddFamilyModal(true)}
+                  className="flex items-center justify-center gap-2.5 p-3 rounded-xl border border-dashed border-indigo-500/40 bg-indigo-500/5 text-indigo-400 hover:bg-indigo-500/10 hover:border-indigo-500/60 transition-all font-semibold text-xs min-h-[58px]">
+                  <span className="text-sm">✨</span>
+                  <span>+ Add Other Job</span>
                 </button>
               </div>
-              {hasCustom && (
-                <input
-                  type="text"
-                  placeholder="Describe other specialties (comma separated)..."
-                  value={customSpecialty}
-                  onChange={e => setCustomSpecialty(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 transition-all"
-                />
+              {selectedFamilies.length > 0 && (
+                <p className="text-xs text-indigo-300/80 mt-3">
+                  {selectedFamilies.length} {selectedFamilies.length === 1 ? 'family' : 'families'} selected · you can pick more
+                </p>
               )}
+            </div>
+          )}
+
+          {/* ── Step 2: Specialties (per family) ── */}
+          {step === 2 && selectedFamilies.length > 0 && (
+            <div>
+              <h2 className="font-bold text-lg mb-1">What are your specialties?</h2>
+              <p className="text-white/40 text-sm mb-5">
+                Pick specialties for each of your selected families.
+              </p>
+
+              <div className="space-y-5">
+                {selectedFamilies.map(fam => {
+                  const picked = specialtiesByFamily[fam.id] || [];
+                  const custom = customByFamily[fam.id] || '';
+                  const hasCustom = custom.trim().length > 0;
+                  return (
+                    <div key={fam.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-lg">{fam.icon}</span>
+                        <span className="font-semibold text-sm text-white">{fam.label}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {fam.specialties.map(sp => {
+                          const isSelected = picked.includes(sp);
+                          return (
+                            <button key={sp} type="button" onClick={() => toggleSpecialty(fam.id, sp)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                                isSelected
+                                  ? 'bg-indigo-600 border-indigo-500 text-white'
+                                  : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
+                              }`}>
+                              {sp} {isSelected && '✓'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Add custom specialties (comma separated)..."
+                        value={custom}
+                        onChange={e => setCustomFor(fam.id, e.target.value)}
+                        className="mt-3 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      />
+                      {(picked.length === 0 && !hasCustom) && (
+                        <p className="text-[11px] text-amber-400/70 mt-2">⚠ At least one specialty is required for this family.</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -343,7 +449,7 @@ export default function ProfileSetup() {
                 )}
                 {!remoteAllowed && (
                   <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-300">
-                    ⚠️ {selectedFamily?.label} is an in-person service — remote option is not available.
+                    ⚠️ Your selected {selectedFamilies.length > 1 ? 'families are' : 'family is'} in-person only — remote option is not available.
                   </div>
                 )}
               </div>
@@ -401,10 +507,10 @@ export default function ProfileSetup() {
                     onChange={e => setHourlyRate(e.target.value)}
                   />
                   <select value={currency} onChange={e => setCurrency(e.target.value)}
-                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 appearance-none">
-                    <option value="TND" className="bg-[#12121a]">TND</option>
-                    <option value="EUR" className="bg-[#12121a]">EUR</option>
-                    <option value="USD" className="bg-[#12121a]">USD</option>
+                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 appearance-none cursor-pointer">
+                    <option value="TND">TND</option>
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
                   </select>
                 </div>
               </div>
@@ -437,12 +543,21 @@ export default function ProfileSetup() {
               {/* Summary */}
               <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-4 py-4 space-y-1 text-xs">
                 <p className="text-indigo-300 font-semibold uppercase tracking-wider mb-2">Summary</p>
-                <p className="text-white/60">🏷 <span className="text-white">{selectedFamily?.label} — {
-                  [
-                    ...selectedSpecialties,
-                    ...(hasCustom && customSpecialty.trim() ? customSpecialty.split(',').map(s => s.trim()).filter(Boolean) : [])
-                  ].join(', ') || 'No specialty selected'
-                }</span></p>
+                {selectedFamilies.length === 0 ? (
+                  <p className="text-white/60">🏷 <span className="text-white">No family selected</span></p>
+                ) : (
+                  selectedFamilies.map(fam => {
+                    const all = [
+                      ...(specialtiesByFamily[fam.id] || []),
+                      ...((customByFamily[fam.id] || '').split(',').map(s => s.trim()).filter(Boolean)),
+                    ];
+                    return (
+                      <p key={fam.id} className="text-white/60">
+                        🏷 <span className="text-white">{fam.label} — {all.join(', ') || 'No specialty'}</span>
+                      </p>
+                    );
+                  })
+                )}
                 <p className="text-white/60">📍 <span className="text-white">{city || 'No city set'}</span>{!remoteAllowed ? ' (in-person only)' : workMode === 'both' ? ' · Remote & In-person' : workMode === 'remote' ? ' · Remote' : ' · In-person'}</p>
                 <p className="text-white/60">📅 <span className="text-white">{availability.filter(d => d.enabled).map(d => d.day).join(', ') || 'No days set'}</span></p>
                 <p className="text-white/60">💰 <span className="text-white">{hourlyRate || '—'} {currency}/hr</span></p>
@@ -464,8 +579,11 @@ export default function ProfileSetup() {
             <button
               onClick={() => { setError(''); setStep(step + 1); }}
               disabled={
-                (step === 1 && !selectedFamily) ||
-                (step === 2 && selectedSpecialties.length === 0 && (!hasCustom || !customSpecialty.trim()))
+                (step === 1 && selectedFamilies.length === 0) ||
+                (step === 2 && selectedFamilies.some(fam =>
+                  (specialtiesByFamily[fam.id] || []).length === 0 &&
+                  !(customByFamily[fam.id] || '').trim()
+                ))
               }
               className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all py-3 rounded-xl font-semibold text-sm">
               Continue →
@@ -479,6 +597,89 @@ export default function ProfileSetup() {
         </div>
         <p className="text-center text-xs text-white/20 mt-4">You can update this anytime from your dashboard</p>
       </div>
+
+      {showAddFamilyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-[#06060a]/85 backdrop-blur-md transition-opacity" 
+            onClick={() => !categorizing && setShowAddFamilyModal(false)}
+          />
+          
+          {/* Modal Container */}
+          <div className="relative z-10 w-full max-w-md bg-[#12121a]/95 border border-white/10 rounded-2xl p-6 shadow-2xl backdrop-blur-xl transition-all">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <span className="text-xl">✨</span> AI Job Generator
+              </h3>
+              {!categorizing && (
+                <button 
+                  onClick={() => setShowAddFamilyModal(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white/50 hover:text-white transition-all text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {categorizing ? (
+              /* Loading / Interacting AI State */
+              <div className="py-8 text-center space-y-4">
+                <div className="relative w-16 h-16 mx-auto animate-pulse">
+                  <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+                  <div className="absolute inset-2 rounded-full border-4 border-purple-500/20 border-b-purple-500 animate-spin [animation-duration:1.5s]" />
+                  <div className="absolute inset-4 rounded-full bg-indigo-500/10 flex items-center justify-center font-bold text-xs text-indigo-400">
+                    AI
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-bold text-sm text-indigo-300 animate-pulse">Analyzing profession...</p>
+                  <p className="text-xs text-white/40 max-w-xs mx-auto leading-relaxed">
+                    AI is interacting to create a new job family, identify specialties, assign an icon, and determine remote eligibility.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* Input Form */
+              <div className="space-y-4">
+                <p className="text-white/60 text-sm leading-relaxed">
+                  Can't find your profession in our lists? Type it here. Our AI will automatically categorize it, assign the perfect emoji, set work modes, and generate relevant specialties for you!
+                </p>
+                <div>
+                  <label className="text-xs text-white/40 uppercase tracking-wider mb-1.5 block">Job / Profession Title</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Gardener, Yoga Instructor, Piano Teacher..."
+                    value={newJobQuery}
+                    onChange={(e) => setNewJobQuery(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 transition-all"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddFamily();
+                    }}
+                    autoFocus
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => setShowAddFamilyModal(false)}
+                    className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 transition-all py-2.5 rounded-xl font-semibold text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleAddFamily}
+                    disabled={!newJobQuery.trim()}
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5"
+                  >
+                    <span>✨ Generate Family</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

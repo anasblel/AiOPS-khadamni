@@ -8,14 +8,56 @@ import Navbar from '../components/Navbar';
 const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 function ProviderCard({ provider, onBook, onViewProfile }) {
+  // Build a clear "family · specialty" pair list:
+  //  - If the chat backend annotated a specific specialty hit (matchedSpecialty
+  //    + matchedFamily), surface that pair first.
+  //  - Otherwise show every (family, specialty) pair the provider has, falling
+  //    back to the legacy single specialty.
+  const familyPairs = [];
+  if (provider.matchedSpecialty && provider.matchedFamily) {
+    familyPairs.push({
+      family: provider.matchedFamily,
+      specialty: provider.matchedSpecialty,
+      highlight: true,
+    });
+  }
+  if (Array.isArray(provider.professions) && provider.professions.length > 0) {
+    provider.professions.forEach(prof => {
+      const famLabel = prof.familyLabel || prof.family;
+      (prof.specialties || []).forEach(sp => {
+        const already = familyPairs.some(p => p.family === famLabel && p.specialty === sp);
+        if (!already) familyPairs.push({ family: famLabel, specialty: sp, highlight: false });
+      });
+    });
+  } else if (provider.specialty) {
+    familyPairs.push({ family: provider.jobFamily || '', specialty: provider.specialty, highlight: false });
+  }
+
   return (
     <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-4 mt-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-sm text-white">{provider.name}</div>
-          <div className="text-xs text-white/50 mt-0.5">
-            {provider.specialty && <span className="text-indigo-300">{provider.specialty}</span>}
-            {provider.specialty && ' · '}
+
+          {familyPairs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {familyPairs.map((pair, idx) => (
+                <span
+                  key={`${pair.family}-${pair.specialty}-${idx}`}
+                  className={`text-[11px] rounded-md px-2 py-0.5 border ${
+                    pair.highlight
+                      ? 'bg-indigo-500/25 border-indigo-400/50 text-white font-semibold'
+                      : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300'
+                  }`}
+                  title={`${pair.family || 'Family'} · ${pair.specialty}`}
+                >
+                  {pair.family ? `${pair.family} · ${pair.specialty}` : pair.specialty}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="text-xs text-white/50 mt-1.5">
             {provider.workMode === 'both' ? '🌎 Remote & In-person' : provider.workMode === 'remote' ? '💻 Remote' : '📍 In-person'}
             {provider.city && ` · ${provider.city}`}
             {' · '}{provider.hourlyRate} {provider.currency}/hr
@@ -62,6 +104,16 @@ function ProviderCard({ provider, onBook, onViewProfile }) {
   );
 }
 
+// Local-timezone YYYY-MM-DD (avoids the UTC drift that breaks date comparisons
+// across timezones around midnight).
+function todayLocalYMD() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function BookingModal({ provider, onClose, onConfirm }) {
   const [form, setForm] = useState({ skill: provider.skills?.[0] || '', date: '', timeFrom: '', budget: '' });
   const [loading, setLoading] = useState(false);
@@ -70,6 +122,8 @@ function BookingModal({ provider, onClose, onConfirm }) {
   const [detectingLoc, setDetectingLoc] = useState(false);
   const [locAddress, setLocAddress] = useState('');
   const overlayRef = useRef(null);
+  const todayStr = todayLocalYMD();
+  const isDateInPast = form.date && form.date < todayStr;
 
   // ESC key to close
   useEffect(() => {
@@ -138,6 +192,10 @@ function BookingModal({ provider, onClose, onConfirm }) {
 
   const handleConfirm = async () => {
     if (!form.date || !form.timeFrom) { setError('Please fill in date and time.'); return; }
+    if (form.date < todayStr) {
+      setError('You cannot book on a past date. Please pick today or a future date.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -208,14 +266,28 @@ function BookingModal({ provider, onClose, onConfirm }) {
           <div>
             <label className="text-xs text-white/40 uppercase tracking-wider">Service</label>
             <select value={form.skill} onChange={e => setForm({ ...form, skill: e.target.value })}
-              className="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/50">
+              className="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/50 appearance-none cursor-pointer">
               {provider.skills?.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs text-white/40 uppercase tracking-wider">Date</label>
-            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })}
-              className="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/50" />
+            <input
+              type="date"
+              value={form.date}
+              min={todayStr}
+              onChange={e => setForm({ ...form, date: e.target.value })}
+              className={`mt-1 w-full bg-white/5 border rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none ${
+                isDateInPast
+                  ? 'border-red-500/60 focus:border-red-500'
+                  : 'border-white/10 focus:border-indigo-500/50'
+              }`}
+            />
+            {isDateInPast && (
+              <p className="mt-1 text-xs text-red-300">
+                ⚠ You cannot book on a past date. Please pick today or a future date.
+              </p>
+            )}
           </div>
           <div>
             <label className="text-xs text-white/40 uppercase tracking-wider">Time</label>
@@ -274,8 +346,8 @@ function BookingModal({ provider, onClose, onConfirm }) {
           <button onClick={onClose} className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 py-2.5 rounded-xl text-sm font-semibold transition-all">
             Cancel
           </button>
-          <button onClick={handleConfirm} disabled={loading}
-            className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 py-2.5 rounded-xl text-sm font-semibold transition-all">
+          <button onClick={handleConfirm} disabled={loading || isDateInPast}
+            className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed py-2.5 rounded-xl text-sm font-semibold transition-all">
             {loading ? 'Booking...' : 'Confirm'}
           </button>
         </div>
@@ -286,12 +358,55 @@ function BookingModal({ provider, onClose, onConfirm }) {
 
 export default function Chat() {
   const { user } = useAuth();
-  const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem('aiops_chat_history');
-    return saved ? JSON.parse(saved) : [
-      { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
-    ];
+  
+  // Conversations state: Array of objects:
+  // { id: 'uuid-or-timestamp', title: 'Need a Plumber', messages: [...], updatedAt: 'timestamp' }
+  const [conversations, setConversations] = useState(() => {
+    const saved = localStorage.getItem('aiops_conversations');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error("Error parsing conversations", e);
+      }
+    }
+    
+    // Migration from old single chat format if exists
+    const legacy = localStorage.getItem('aiops_chat_history');
+    if (legacy) {
+      try {
+        const parsedLegacy = JSON.parse(legacy);
+        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
+          const firstUserMsg = parsedLegacy.find(m => m.role === 'user');
+          const title = firstUserMsg ? (firstUserMsg.text.slice(0, 26) + (firstUserMsg.text.length > 26 ? '...' : '')) : 'Previous Chat';
+          return [{
+            id: 'legacy',
+            title,
+            messages: parsedLegacy,
+            updatedAt: Date.now()
+          }];
+        }
+      } catch (e) {}
+    }
+    
+    // Default initial conversation
+    return [{
+      id: 'default',
+      title: 'New Chat',
+      messages: [
+        { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
+      ],
+      updatedAt: Date.now()
+    }];
   });
+
+  const [activeConvId, setActiveConvId] = useState(() => {
+    const savedActive = localStorage.getItem('aiops_active_conversation_id');
+    return savedActive || 'default';
+  });
+
+  const [sidebarOpen, setSidebarOpen] = useState(false); // For mobile responsiveness
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingTarget, setBookingTarget] = useState(null);
@@ -300,8 +415,22 @@ export default function Chat() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem('aiops_chat_history', JSON.stringify(messages));
-  }, [messages]);
+    localStorage.setItem('aiops_conversations', JSON.stringify(conversations));
+  }, [conversations]);
+
+  useEffect(() => {
+    localStorage.setItem('aiops_active_conversation_id', activeConvId);
+  }, [activeConvId]);
+
+  const activeConversation = conversations.find(c => c.id === activeConvId) || conversations[0] || {
+    id: 'default',
+    title: 'New Chat',
+    messages: [
+      { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
+    ]
+  };
+
+  const messages = activeConversation.messages;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -311,7 +440,26 @@ export default function Chat() {
     if (!input.trim() || loading) return;
     const userMsg = { role: 'user', text: input };
     const history = messages;
-    setMessages(prev => [...prev, userMsg]);
+    
+    // Determine title if this was a default "New Chat" and it is the first user message
+    let updatedTitle = activeConversation.title;
+    if (activeConversation.title === 'New Chat' || activeConversation.title === 'Previous Chat') {
+      updatedTitle = input.trim().slice(0, 26) + (input.trim().length > 26 ? '...' : '');
+    }
+
+    // Update active conversation in conversations list
+    setConversations(prev => prev.map(c => {
+      if (c.id === activeConversation.id) {
+        return {
+          ...c,
+          title: updatedTitle,
+          messages: [...c.messages, userMsg],
+          updatedAt: Date.now()
+        };
+      }
+      return c;
+    }));
+    
     setInput('');
     setLoading(true);
 
@@ -323,11 +471,72 @@ export default function Chat() {
         providers: data.matchedProviders,
         fallback: data.fallback
       };
-      setMessages(prev => [...prev, aiMsg]);
+      
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversation.id) {
+          return {
+            ...c,
+            messages: [...c.messages, aiMsg],
+            updatedAt: Date.now()
+          };
+        }
+        return c;
+      }));
     } catch {
-      setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, something went wrong. Please try again.' }]);
+      const errorMsg = { role: 'ai', text: 'Sorry, something went wrong. Please try again.' };
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversation.id) {
+          return {
+            ...c,
+            messages: [...c.messages, errorMsg],
+            updatedAt: Date.now()
+          };
+        }
+        return c;
+      }));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    const newId = 'chat_' + Date.now();
+    const newChat = {
+      id: newId,
+      title: 'New Chat',
+      messages: [
+        { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
+      ],
+      updatedAt: Date.now()
+    };
+    setConversations(prev => [newChat, ...prev]);
+    setActiveConvId(newId);
+    setSidebarOpen(false); // Close mobile sidebar if open
+  };
+
+  const handleDeleteChat = (id, e) => {
+    e.stopPropagation(); // Avoid selecting the chat being deleted
+    if (window.confirm("Are you sure you want to delete this conversation?")) {
+      const updated = conversations.filter(c => c.id !== id);
+      setConversations(updated);
+      
+      if (activeConvId === id) {
+        if (updated.length > 0) {
+          setActiveConvId(updated[0].id);
+        } else {
+          // If no conversations left, create a fresh one
+          const freshId = 'default';
+          setConversations([{
+            id: freshId,
+            title: 'New Chat',
+            messages: [
+              { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
+            ],
+            updatedAt: Date.now()
+          }]);
+          setActiveConvId(freshId);
+        }
+      }
     }
   };
 
@@ -346,7 +555,7 @@ export default function Chat() {
   };
 
   return (
-    <div style={{ fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }} className="min-h-screen bg-[#0a0a0f] text-white flex flex-col">
+    <div style={{ fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }} className="min-h-screen bg-[#0a0a0f] text-white flex flex-col h-screen overflow-hidden">
       <div className="fixed inset-0 pointer-events-none" style={{
         backgroundImage: 'linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px)',
         backgroundSize: '48px 48px'
@@ -370,110 +579,230 @@ export default function Chat() {
 
       <Navbar />
 
-      {/* Header bar with New Chat */}
-      <div className="relative z-10 mx-auto w-full max-w-2xl px-4 pt-6 flex justify-between items-center shrink-0">
-        <h2 className="text-sm font-semibold text-white/50 flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
-          AI Chat Assistant
-        </h2>
-        <button
-          onClick={() => {
-            if (window.confirm("Start a new chat? This will clear the current session history.")) {
-              localStorage.removeItem('aiops_chat_history');
-              setMessages([
-                { role: 'ai', text: "Hi! Describe the service you need — include the location, time, and budget if you have one." }
-              ]);
-            }
-          }}
-          className="text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 hover:bg-indigo-500/20 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New Chat
-        </button>
-      </div>
+      {/* Main Container */}
+      <div className="flex-1 flex overflow-hidden relative z-10">
+        
+        {/* Mobile Sidebar Overlay */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden transition-opacity duration-300"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
 
-      {bookingSuccess && (
-        <div className="relative z-10 mx-auto w-full max-w-2xl px-4 pt-4">
-          <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3 text-sm text-green-300">
-            ✅ {bookingSuccess}
+        {/* Left Sidebar (Desktop + Mobile Drawer) */}
+        <aside className={`
+          fixed inset-y-0 left-0 z-40 w-72 bg-[#0c0c14] border-r border-white/5 flex flex-col transition-transform duration-300 ease-in-out
+          md:static md:translate-x-0 md:bg-white/[0.01] md:backdrop-blur-xl h-full
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}>
+          {/* Sidebar Header */}
+          <div className="p-4 border-b border-white/5 flex items-center justify-between">
+            <h3 className="text-xs font-semibold tracking-wider uppercase text-white/40 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+              Conversations
+            </h3>
+            {sidebarOpen && (
+              <button 
+                onClick={() => setSidebarOpen(false)}
+                className="md:hidden text-white/50 hover:text-white p-1"
+              >
+                ✕
+              </button>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* Messages */}
-      <div className="relative z-10 flex-1 overflow-y-auto px-4 py-6 max-w-2xl mx-auto w-full">
-        <div className="space-y-4">
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.role === 'ai' && (
-                <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs text-indigo-300 shrink-0 mt-0.5">AI</div>
-              )}
-              <div className="max-w-[80%]">
-                <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-indigo-600/30 border border-indigo-500/30 text-white rounded-tr-sm'
-                    : 'bg-white/5 border border-white/10 text-white/80 rounded-tl-sm'
-                }`}>
-                  {msg.text}
-                  {msg.fallback && (
-                    <div className="text-xs text-amber-400/60 mt-2 italic">
-                      ⚠️ AI assistant is currently busy - showing basic recommendations
-                    </div>
+          {/* New Chat Button */}
+          <div className="p-4 shrink-0">
+            <button
+              onClick={handleNewChat}
+              className="w-full bg-indigo-600/10 border border-indigo-500/20 text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all py-3 px-4 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              New Chat
+            </button>
+          </div>
+
+          {/* Conversations List */}
+          <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
+            {conversations.map(c => {
+              const isActive = c.id === activeConvId;
+              const hasMessages = c.messages.length > 1; // has user messages
+              const snippet = hasMessages 
+                ? (c.messages.find(m => m.role === 'user')?.text || '') 
+                : '';
+              
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => {
+                    setActiveConvId(c.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`
+                    group relative flex flex-col gap-1 p-3 rounded-xl cursor-pointer transition-all duration-200 border text-left
+                    ${isActive 
+                      ? 'bg-indigo-600/15 border-indigo-500/40 text-white font-semibold' 
+                      : 'bg-transparent border-transparent text-white/50 hover:bg-white/[0.03] hover:text-white/80'}
+                  `}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-xs truncate max-w-[85%]">
+                      {c.title}
+                    </span>
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => handleDeleteChat(c.id, e)}
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-400 p-1 rounded transition-opacity"
+                      title="Delete chat"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  {snippet && (
+                    <span className="text-[10px] text-white/30 truncate block max-w-[90%] font-normal">
+                      {snippet}
+                    </span>
                   )}
                 </div>
-                {msg.providers?.map((p, j) => (
-                  <ProviderCard
-                    key={j}
-                    provider={p}
-                    onBook={setBookingTarget}
-                    onViewProfile={setViewProfileProvider}
-                  />
-                ))}
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Right Chat Area */}
+        <main className="flex-1 flex flex-col overflow-hidden bg-transparent h-full">
+          
+          {/* Header Bar */}
+          <div className="border-b border-white/5 px-6 py-4 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              {/* Toggle Sidebar (Mobile) */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden text-white/60 hover:text-white p-1.5 rounded-lg bg-white/5 border border-white/10"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+              </button>
+              
+              <div>
+                <h2 className="text-sm font-bold flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+                  {activeConversation.title}
+                </h2>
+                <p className="text-[10px] text-white/30 mt-0.5">AI Professional Matching Assistant</p>
               </div>
-              {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-xs shrink-0 mt-0.5">
-                  {user?.name?.[0]?.toUpperCase()}
-                </div>
-              )}
             </div>
-          ))}
-          {loading && (
-            <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs text-indigo-300 shrink-0">AI</div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3">
-                <span className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
+
+            {/* Quick Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleNewChat}
+                className="text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 hover:bg-indigo-500/20 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 md:hidden"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                New
+              </button>
+            </div>
+          </div>
+
+          {bookingSuccess && (
+            <div className="mx-6 mt-4 shrink-0">
+              <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3 text-sm text-green-300">
+                ✅ {bookingSuccess}
               </div>
             </div>
           )}
-          <div ref={bottomRef} />
-        </div>
-      </div>
 
-      {/* Input */}
-      <div className="relative z-10 border-t border-white/5 px-4 py-4 shrink-0">
-        <div className="max-w-2xl mx-auto flex gap-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder="e.g. I need a plumber in Ariana tomorrow after 5 PM, budget 40 TND..."
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 transition-all"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || loading}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all px-5 py-3 rounded-xl font-semibold text-sm shrink-0"
-          >
-            Send
-          </button>
-        </div>
+          {/* Messages Container */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 scrollbar-thin">
+            <div className="max-w-2xl mx-auto space-y-5">
+              {messages.map((msg, i) => (
+                <div key={i} className={`flex gap-3.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.role === 'ai' && (
+                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs text-indigo-300 shrink-0 mt-0.5 shadow-inner">
+                      AI
+                    </div>
+                  )}
+                  <div className="max-w-[85%] sm:max-w-[75%]">
+                    <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-lg ${
+                      msg.role === 'user'
+                        ? 'bg-indigo-600/30 border border-indigo-500/30 text-white rounded-tr-sm'
+                        : 'bg-white/[0.04] border border-white/10 text-white/90 rounded-tl-sm backdrop-blur-md'
+                    }`}>
+                      {msg.text}
+                      {msg.fallback && (
+                        <div className="text-[10px] text-amber-400/80 mt-2 flex items-center gap-1 font-medium bg-amber-500/10 rounded px-2 py-0.5 border border-amber-500/20 w-fit">
+                          <span>⚠️</span>
+                          <span>Fallback Mode Active</span>
+                        </div>
+                      )}
+                    </div>
+                    {msg.providers?.map((p, j) => (
+                      <ProviderCard
+                        key={j}
+                        provider={p}
+                        onBook={setBookingTarget}
+                        onViewProfile={setViewProfileProvider}
+                      />
+                    ))}
+                  </div>
+                  {msg.role === 'user' && (
+                    <div className="w-8 h-8 rounded-full bg-white/15 border border-white/10 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow-md">
+                      {user?.name?.[0]?.toUpperCase()}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {loading && (
+                <div className="flex gap-3.5 justify-start">
+                  <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs text-indigo-300 shrink-0 shadow-inner">
+                    AI
+                  </div>
+                  <div className="bg-white/[0.04] border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3.5 backdrop-blur-md">
+                    <span className="flex gap-1.5">
+                      <span className="w-2 h-2 bg-indigo-400/80 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-indigo-400/80 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-indigo-400/80 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+          </div>
+
+          {/* Input Area */}
+          <div className="border-t border-white/5 px-6 py-4 shrink-0 bg-[#07070b]/60 backdrop-blur-md">
+            <div className="max-w-2xl mx-auto flex gap-3">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                placeholder="e.g. I need a plumber in Ariana tomorrow after 5 PM, budget 40 TND..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500/50 transition-all shadow-inner"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || loading}
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98] transition-all px-6 py-3.5 rounded-xl font-semibold text-sm shrink-0 flex items-center gap-1.5 shadow-md"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </main>
       </div>
     </div>
   );

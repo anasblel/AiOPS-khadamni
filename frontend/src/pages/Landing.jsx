@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function Landing() {
   return (
@@ -18,6 +19,7 @@ export default function Landing() {
           <span className="font-bold text-lg tracking-tight">AIOps <span className="text-indigo-400">Freelance</span></span>
         </div>
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <Link to="/login" className="text-sm text-white/60 hover:text-white transition-colors">Sign in</Link>
           <Link to="/register" className="text-sm bg-indigo-600 hover:bg-indigo-500 transition-colors px-4 py-2 rounded-lg font-medium">Get Started</Link>
         </div>

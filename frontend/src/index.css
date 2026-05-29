@@ -1,3 +1,203 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─── Theme defaults ────────────────────────────────────────────────────── */
+:root[data-theme="dark"]  { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+html, body { transition: background-color 200ms ease, color 200ms ease; }
+
+/* ─── Native <select> / <option> ───────────────────────────────────────── */
+select option,
+select optgroup {
+  background-color: #ffffff;
+  color: #111827;
+  padding: 6px 8px;
+}
+:root[data-theme="dark"] select option,
+:root[data-theme="dark"] select optgroup {
+  background-color: #1a1a24;
+  color: #f3f4f6;
+}
+:root[data-theme="light"] select option,
+:root[data-theme="light"] select optgroup {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+/* When appearance:none is applied, paint a small CSS chevron */
+select.appearance-none {
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 1px),
+    calc(100% - 13px) calc(50% - 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2.25rem;
+}
+
+select:disabled option { opacity: 0.6; }
+select:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.65);
+  outline-offset: 2px;
+}
+
+/* ─── LIGHT THEME ────────────────────────────────────────────────────────
+   The app was authored dark-first with hard-coded dark hex values, white
+   text, white-alpha surfaces, and dark radial overlays. The rules below
+   translate those into a cohesive light palette without rewriting each
+   component. Light surfaces use a soft off-white (#f4f5fa) page bg,
+   pure white cards, slate-900 text, and gentle slate borders. */
+
+:root[data-theme="light"] body {
+  background-color: #f4f5fa;
+  color: #0f172a;
+}
+
+/* ── Page / card backgrounds ── */
+:root[data-theme="light"] .bg-\[\#0a0a0f\] { background-color: #f4f5fa !important; }
+:root[data-theme="light"] .bg-\[\#0a0a0f\]\/80 { background-color: rgba(244, 245, 250, 0.88) !important; }
+:root[data-theme="light"] .bg-\[\#0c0c14\] { background-color: #ffffff !important; }
+:root[data-theme="light"] .bg-\[\#161622\] { background-color: #ffffff !important; }
+:root[data-theme="light"] .bg-\[\#12121a\] { background-color: #ffffff !important; }
+:root[data-theme="light"] .bg-\[\#06060a\]\/85 { background-color: rgba(244, 245, 250, 0.92) !important; }
+:root[data-theme="light"] .bg-\[\#07070b\]\/60 { background-color: rgba(244, 245, 250, 0.85) !important; }
+:root[data-theme="light"] .bg-\[\#12121a\]\/95 { background-color: rgba(255, 255, 255, 0.97) !important; }
+:root[data-theme="light"] .bg-\[\#12121a\]\/60 { background-color: rgba(255, 255, 255, 0.95) !important; }
+:root[data-theme="light"] .bg-\[\#12121a\]\/40 { background-color: rgba(255, 255, 255, 0.92) !important; }
+
+/* Modal/backdrop overlays — soften so light-mode modals don't sit on pitch black */
+:root[data-theme="light"] .bg-black\/80 { background-color: rgba(15, 23, 42, 0.45) !important; }
+:root[data-theme="light"] .bg-black\/70 { background-color: rgba(15, 23, 42, 0.4) !important; }
+:root[data-theme="light"] .bg-black\/60 { background-color: rgba(15, 23, 42, 0.3) !important; }
+
+/* ── White-alpha → slate-alpha (translucent surfaces) ── */
+:root[data-theme="light"] .bg-white\/5,
+:root[data-theme="light"] .bg-white\/\[0\.01\],
+:root[data-theme="light"] .bg-white\/\[0\.02\],
+:root[data-theme="light"] .bg-white\/\[0\.03\],
+:root[data-theme="light"] .bg-white\/\[0\.04\] {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+:root[data-theme="light"] .bg-white\/10 { background-color: rgba(15, 23, 42, 0.08) !important; }
+:root[data-theme="light"] .bg-white\/15 { background-color: rgba(15, 23, 42, 0.10) !important; }
+
+:root[data-theme="light"] .hover\:bg-white\/5:hover,
+:root[data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(15, 23, 42, 0.06) !important; }
+:root[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgba(15, 23, 42, 0.10) !important; }
+
+/* ── Borders ── */
+:root[data-theme="light"] .border-white\/5 { border-color: rgba(15, 23, 42, 0.07) !important; }
+:root[data-theme="light"] .border-white\/10 { border-color: rgba(15, 23, 42, 0.12) !important; }
+:root[data-theme="light"] .border-white\/20 { border-color: rgba(15, 23, 42, 0.22) !important; }
+:root[data-theme="light"] .hover\:border-white\/20:hover { border-color: rgba(15, 23, 42, 0.22) !important; }
+:root[data-theme="light"] .divide-white\/5 > * + * { border-color: rgba(15, 23, 42, 0.07) !important; }
+
+/* ── Text colours ── */
+:root[data-theme="light"] .text-white { color: #0f172a !important; }
+:root[data-theme="light"] .text-white\/90 { color: rgba(15, 23, 42, 0.9) !important; }
+:root[data-theme="light"] .text-white\/80 { color: rgba(15, 23, 42, 0.82) !important; }
+:root[data-theme="light"] .text-white\/70 { color: rgba(15, 23, 42, 0.78) !important; }
+:root[data-theme="light"] .text-white\/60 { color: rgba(15, 23, 42, 0.7) !important; }
+:root[data-theme="light"] .text-white\/55 { color: rgba(15, 23, 42, 0.62) !important; }
+:root[data-theme="light"] .text-white\/50 { color: rgba(15, 23, 42, 0.55) !important; }
+:root[data-theme="light"] .text-white\/40 { color: rgba(15, 23, 42, 0.5) !important; }
+:root[data-theme="light"] .text-white\/30 { color: rgba(15, 23, 42, 0.42) !important; }
+:root[data-theme="light"] .text-white\/20 { color: rgba(15, 23, 42, 0.32) !important; }
+
+:root[data-theme="light"] .hover\:text-white:hover { color: #0f172a !important; }
+:root[data-theme="light"] .hover\:text-white\/80:hover { color: rgba(15, 23, 42, 0.82) !important; }
+:root[data-theme="light"] .hover\:text-white\/70:hover { color: rgba(15, 23, 42, 0.78) !important; }
+
+:root[data-theme="light"] .placeholder-white\/20::placeholder { color: rgba(15, 23, 42, 0.32) !important; }
+:root[data-theme="light"] .placeholder-white\/30::placeholder { color: rgba(15, 23, 42, 0.42) !important; }
+
+/* ── Disarm gradient-text utilities (otherwise white-via-white text vanishes
+      on light bg). Re-paint as solid slate text. ── */
+:root[data-theme="light"] .bg-clip-text.text-transparent {
+  background: none !important;
+  -webkit-background-clip: initial !important;
+          background-clip: initial !important;
+  -webkit-text-fill-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+/* ── Neutralise decorative DARK radial / linear overlays
+      (Dashboard etc. apply a fixed inset gradient that goes via #0a0a0f). ── */
+:root[data-theme="light"] .from-indigo-900\/10 {
+  --tw-gradient-from: rgba(99, 102, 241, 0.04) var(--tw-gradient-from-position) !important;
+}
+:root[data-theme="light"] .via-\[\#0a0a0f\] {
+  --tw-gradient-via: transparent !important;
+  --tw-gradient-stops: var(--tw-gradient-from), transparent var(--tw-gradient-via-position, 50%), var(--tw-gradient-to) !important;
+}
+:root[data-theme="light"] .to-\[\#0a0a0f\] {
+  --tw-gradient-to: transparent !important;
+}
+
+/* ── AI Assistant banner gradient (Dashboard "Need to find a service provider?")
+      goes from deep indigo/purple to dark — soften to a light tinted card. ── */
+:root[data-theme="light"] .from-indigo-950\/40,
+:root[data-theme="light"] .from-indigo-950\/60 {
+  --tw-gradient-from: rgba(99, 102, 241, 0.08) var(--tw-gradient-from-position) !important;
+}
+:root[data-theme="light"] .to-purple-950\/20 {
+  --tw-gradient-to: rgba(168, 85, 247, 0.06) var(--tw-gradient-to-position) !important;
+}
+:root[data-theme="light"] .hover\:bg-indigo-950\/60:hover {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+/* ── Stat-card colour gradients ─ in dark mode they sit on a near-black page;
+      in light mode they need stronger tint so the cards stand out. ── */
+:root[data-theme="light"] .from-emerald-500\/10 { --tw-gradient-from: rgba(16, 185, 129, 0.18) var(--tw-gradient-from-position) !important; }
+:root[data-theme="light"] .to-teal-500\/5     { --tw-gradient-to:   rgba(20, 184, 166, 0.10) var(--tw-gradient-to-position)   !important; }
+:root[data-theme="light"] .from-indigo-500\/10 { --tw-gradient-from: rgba(99, 102, 241, 0.18) var(--tw-gradient-from-position) !important; }
+:root[data-theme="light"] .to-indigo-500\/5    { --tw-gradient-to:   rgba(99, 102, 241, 0.10) var(--tw-gradient-to-position)   !important; }
+:root[data-theme="light"] .from-amber-500\/10  { --tw-gradient-from: rgba(245, 158, 11, 0.20) var(--tw-gradient-from-position) !important; }
+:root[data-theme="light"] .to-amber-500\/5     { --tw-gradient-to:   rgba(245, 158, 11, 0.10) var(--tw-gradient-to-position)   !important; }
+:root[data-theme="light"] .from-violet-500\/10 { --tw-gradient-from: rgba(139, 92, 246, 0.18) var(--tw-gradient-from-position) !important; }
+:root[data-theme="light"] .to-violet-500\/5    { --tw-gradient-to:   rgba(139, 92, 246, 0.10) var(--tw-gradient-to-position)   !important; }
+
+/* Stat / colored card border tints */
+:root[data-theme="light"] .border-emerald-500\/20 { border-color: rgba(16, 185, 129, 0.35) !important; }
+:root[data-theme="light"] .border-indigo-500\/20  { border-color: rgba(99, 102, 241, 0.35) !important; }
+:root[data-theme="light"] .border-amber-500\/20   { border-color: rgba(245, 158, 11, 0.35) !important; }
+:root[data-theme="light"] .border-violet-500\/20  { border-color: rgba(139, 92, 246, 0.35) !important; }
+:root[data-theme="light"] .border-indigo-500\/35  { border-color: rgba(99, 102, 241, 0.45) !important; }
+:root[data-theme="light"] .border-indigo-500\/30  { border-color: rgba(99, 102, 241, 0.4) !important; }
+:root[data-theme="light"] .border-indigo-500\/40  { border-color: rgba(99, 102, 241, 0.5) !important; }
+
+/* ── Accent text colours used on dark colored badges/chips read fine in
+      light mode but tone them slightly darker for AA contrast. ── */
+:root[data-theme="light"] .text-indigo-300 { color: #4338ca !important; }
+:root[data-theme="light"] .text-indigo-400 { color: #4f46e5 !important; }
+:root[data-theme="light"] .text-emerald-300 { color: #047857 !important; }
+:root[data-theme="light"] .text-emerald-400 { color: #059669 !important; }
+:root[data-theme="light"] .text-amber-300 { color: #b45309 !important; }
+:root[data-theme="light"] .text-amber-400 { color: #c2410c !important; }
+:root[data-theme="light"] .text-rose-300 { color: #be123c !important; }
+:root[data-theme="light"] .text-rose-400 { color: #e11d48 !important; }
+:root[data-theme="light"] .text-red-300 { color: #b91c1c !important; }
+:root[data-theme="light"] .text-violet-400 { color: #7c3aed !important; }
+:root[data-theme="light"] .text-purple-300 { color: #6d28d9 !important; }
+
+/* ── Form controls — explicit light backgrounds and dark text ── */
+:root[data-theme="light"] select,
+:root[data-theme="light"] input[type="text"],
+:root[data-theme="light"] input[type="email"],
+:root[data-theme="light"] input[type="tel"],
+:root[data-theme="light"] input[type="number"],
+:root[data-theme="light"] input[type="password"],
+:root[data-theme="light"] input[type="date"],
+:root[data-theme="light"] input[type="time"],
+:root[data-theme="light"] input[type="search"],
+:root[data-theme="light"] textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Buttons that rely on solid indigo backgrounds are already accessible. */

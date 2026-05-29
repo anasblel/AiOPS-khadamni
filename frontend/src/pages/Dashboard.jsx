@@ -219,15 +219,15 @@ function BookingDetailModal({ booking, isProvider, onClose }) {
   );
 }
 
-function BookingRow({ booking, isProvider, onStatusChange, onViewProfile, onViewDetails, onDelete, onCompleteJob }) {
+function BookingRow({ booking, isProvider, onStatusChange, onViewProfile, onViewDetails, onDelete, onCompleteJob, onRejectRequest }) {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleStatus = async (status) => {
+  const handleAccept = async () => {
     setLoading(true);
     try {
-      await api.patch(`/bookings/${booking._id}/status`, { status });
-      onStatusChange(booking._id, status);
+      await api.patch(`/bookings/${booking._id}/status`, { status: 'accepted' });
+      onStatusChange(booking._id, 'accepted');
     } finally {
       setLoading(false);
     }
@@ -374,15 +374,15 @@ function BookingRow({ booking, isProvider, onStatusChange, onViewProfile, onView
 
           {isProvider && booking.status === 'pending' && (
             <div className="flex items-center gap-1.5 border-l border-white/10 pl-2 ml-1">
-              <button 
-                onClick={() => handleStatus('accepted')} 
+              <button
+                onClick={handleAccept}
                 disabled={loading}
                 className="flex items-center gap-1 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 px-3 py-2 rounded-xl transition-all font-semibold disabled:opacity-40"
               >
                 Accept
               </button>
-              <button 
-                onClick={() => handleStatus('rejected')} 
+              <button
+                onClick={() => onRejectRequest(booking)}
                 disabled={loading}
                 className="flex items-center gap-1 text-xs bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 hover:border-rose-500/50 text-rose-300 px-3 py-2 rounded-xl transition-all font-semibold disabled:opacity-40"
               >
@@ -415,6 +415,110 @@ function BookingRow({ booking, isProvider, onStatusChange, onViewProfile, onView
           </button>
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+// ─── Reject Confirmation Modal ────────────────────────────────────────────────
+// Shown when the provider taps "Reject" on a pending booking. The reason input
+// is optional — the modal submits with whatever the provider has typed (which
+// may be empty) and lets the server know that the booking is being rejected.
+function RejectConfirmModal({ booking, onClose, onConfirm }) {
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await onConfirm({ bookingId: booking._id, reason: reason.trim() });
+    } catch {
+      setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const clientName = booking.client?.name || 'this client';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center px-4 py-6 sm:py-4 bg-black/70 backdrop-blur-sm overflow-y-auto"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Reject booking"
+    >
+      <div className="bg-[#12121a] border border-white/10 rounded-2xl p-7 w-full max-w-md relative shadow-2xl shadow-black/60 my-auto overflow-y-auto max-h-[calc(100vh-3rem)]">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white/50 hover:text-white transition-all"
+          aria-label="Close"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="1" y1="1" x2="13" y2="13" /><line x1="13" y1="1" x2="1" y2="13" />
+          </svg>
+        </button>
+
+        <div className="flex flex-col items-center text-center mb-5">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-red-500/10 border border-rose-500/30 flex items-center justify-center text-3xl mb-3">
+            ⛔
+          </div>
+          <h3 className="font-bold text-xl text-white">Reject this booking?</h3>
+          <p className="text-sm text-white/40 mt-1">
+            You're about to decline <span className="text-white/70 font-medium">{clientName}</span>'s request.
+          </p>
+          <div className="mt-2 text-xs text-white/30">
+            {booking.skill} · {booking.date}{booking.timeFrom ? ` · ${booking.timeFrom}` : ''}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <label htmlFor="reject-reason" className="text-xs text-white/40 uppercase tracking-wider font-semibold block mb-1.5">
+            Reason <span className="text-white/20 normal-case">(optional)</span>
+          </label>
+          <textarea
+            id="reject-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="Let the client know why (optional)..."
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-rose-500/50 resize-none transition-all"
+          />
+          <p className="text-[11px] text-white/30 mt-1.5">
+            The client will see this note. Leave blank to reject without a reason.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 text-xs text-red-300">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 py-3 rounded-xl text-sm font-semibold transition-all text-white/70 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex-1 bg-gradient-to-r from-rose-500 to-red-500 hover:from-rose-400 hover:to-red-400 disabled:opacity-50 disabled:cursor-not-allowed py-3 rounded-xl text-sm font-bold transition-all text-white shadow-lg shadow-rose-500/20"
+          >
+            {loading ? 'Submitting...' : 'Submit rejection'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -560,6 +664,7 @@ export default function Dashboard() {
   const [viewProfileId, setViewProfileId] = useState(null);
   const [viewDetailBooking, setViewDetailBooking] = useState(null);
   const [completeJobBooking, setCompleteJobBooking] = useState(null);
+  const [rejectBooking, setRejectBooking] = useState(null);
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
@@ -615,6 +720,21 @@ export default function Dashboard() {
       setBookings(prev => prev.filter(b => b._id !== id));
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to delete booking');
+    }
+  };
+
+  const handleRejectBooking = async ({ bookingId, reason }) => {
+    try {
+      const payload = { status: 'rejected' };
+      if (reason) payload.providerMessage = reason;
+      await api.patch(`/bookings/${bookingId}/status`, payload);
+      setBookings(prev => prev.map(b =>
+        b._id === bookingId ? { ...b, status: 'rejected', providerMessage: reason || b.providerMessage } : b
+      ));
+      setRejectBooking(null);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to reject booking');
+      throw err;
     }
   };
 
@@ -690,6 +810,15 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Reject Confirmation Modal */}
+      {rejectBooking && (
+        <RejectConfirmModal
+          booking={rejectBooking}
+          onClose={() => setRejectBooking(null)}
+          onConfirm={handleRejectBooking}
+        />
+      )}
+
       <Navbar />
 
       <main className="relative z-10 max-w-4xl mx-auto px-6 py-12 space-y-8">
@@ -706,7 +835,7 @@ export default function Dashboard() {
           </div>
           {!isClient && (
             <Link 
-              to="/setup-profile" 
+              to="/profile" 
               className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-5 py-3 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-indigo-600/10"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -859,6 +988,7 @@ export default function Dashboard() {
                   onViewDetails={setViewDetailBooking}
                   onDelete={handleDeleteBooking}
                   onCompleteJob={setCompleteJobBooking}
+                  onRejectRequest={setRejectBooking}
                 />
               ))}
             </div>

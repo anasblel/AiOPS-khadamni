@@ -60,6 +60,27 @@ export const JOB_FAMILIES = [
     remoteAllowed: true,
     specialties: ['Accounting', 'Tax Consulting', 'Business Plan', 'Market Research', 'Legal Consulting']
   },
+  {
+    id: 'driver',
+    label: 'Driving & Transport',
+    icon: '🚗',
+    remoteAllowed: false,
+    specialties: ['Taxi Driver', 'Personal Chauffeur', 'Delivery Driver', 'Truck Driver', 'Ambulance Driver']
+  },
+  {
+    id: 'doctor',
+    label: 'Medical & Healthcare',
+    icon: '🩺',
+    remoteAllowed: true,
+    specialties: ['General Practitioner', 'Pediatrician', 'Cardiologist', 'Dermatologist', 'Psychiatrist', 'Consulting Doctor']
+  },
+  {
+    id: 'deliveryman',
+    label: 'Delivery & Logistics',
+    icon: '📦',
+    remoteAllowed: false,
+    specialties: ['Food Delivery', 'Courier', 'Parcel Delivery', 'Grocery Shopper', 'Express Shipping']
+  },
 ];
 
 // ─── Sub-schemas ──────────────────────────────────────────────────────────────
@@ -73,15 +94,23 @@ const availabilitySchema = new mongoose.Schema({
   slots: [slotSchema],
 }, { _id: false });
 
+// Each profession pairs a job family with its specialties for this provider.
+const professionSchema = new mongoose.Schema({
+  family: { type: String, required: true },           // e.g. "software"
+  specialties: { type: [String], default: [] },       // e.g. ["React Developer"]
+}, { _id: false });
+
 // ─── Provider schema ──────────────────────────────────────────────────────────
 const providerSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
-  // Feature 1 — Job family + specialty
-  jobFamily: { type: String, default: '' },           // e.g. "software"
-  specialty: { type: String, default: '' },           // e.g. "React Developer"
-  specialties: { type: [String], default: [] },       // e.g. ["React Developer", "Node.js Developer"]
-  skills: [String],                                   // extra tags, free-form
+  // Feature 1 — Job family + specialty (multi-family support)
+  professions: { type: [professionSchema], default: [] }, // [{family, specialties}, ...]
+  jobFamilies: { type: [String], default: [] },           // flat list of family ids
+  jobFamily: { type: String, default: '' },               // first family — kept for backwards compat
+  specialty: { type: String, default: '' },               // first specialty — kept for backwards compat
+  specialties: { type: [String], default: [] },           // flat list across all families
+  skills: [String],                                       // extra tags, free-form
 
   // Feature 2 — Location (GeoJSON point + human city label)
   location: {
@@ -108,6 +137,8 @@ const providerSchema = new mongoose.Schema({
 
 providerSchema.index({ location: '2dsphere' });
 providerSchema.index({ jobFamily: 1, specialty: 1 });
+providerSchema.index({ jobFamilies: 1 });
+providerSchema.index({ 'professions.family': 1, 'professions.specialties': 1 });
 providerSchema.index({ skills: 1 });
 providerSchema.index({ 'availability.day': 1 });
 
