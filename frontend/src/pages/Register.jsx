@@ -23,12 +23,13 @@ export default function Register() {
         });
         window.google.accounts.id.renderButton(
           document.getElementById('google-signup-btn'),
-          { 
-            theme: theme === 'dark' ? 'filled_black' : 'outline', 
-            size: 'large', 
-            width: 320, 
-            text: 'continue_with', 
-            shape: 'pill' 
+          {
+            theme: theme === 'dark' ? 'filled_black' : 'outline',
+            size: 'large',
+            width: 320,
+            text: 'continue_with',
+            shape: 'pill',
+            locale: 'en'
           }
         );
       } else {
@@ -104,7 +105,7 @@ export default function Register() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
             <div className="w-9 h-9 rounded-xl bg-indigo-500 flex items-center justify-center text-sm font-black">AI</div>
-            <span className="font-bold text-xl tracking-tight">AIOps <span className="text-indigo-400">Khadamni</span></span>
+            <span className="font-bold text-xl tracking-tight">AIOps <span className="text-indigo-400">Freelance</span></span>
           </Link>
           <h1 className="text-2xl font-bold">Create your account</h1>
           <p className="text-white/40 text-sm mt-1">Join as a client or service provider</p>
@@ -117,11 +118,10 @@ export default function Register() {
               key={role}
               type="button"
               onClick={() => setForm({ ...form, role })}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold capitalize transition-all ${
-                form.role === role
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold capitalize transition-all ${form.role === role
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
                   : 'text-white/40 hover:text-white/70'
-              }`}
+                }`}
             >
               {role === 'client' ? '🔍 I need help' : '🛠 I offer services'}
             </button>
@@ -186,8 +186,8 @@ export default function Register() {
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                   Creating account...
                 </span>
@@ -207,7 +207,7 @@ export default function Register() {
 
           {/* Google Sign-up Container */}
           <div className="w-full flex justify-center">
-            <div id="google-signup-btn" className="w-full min-h-[44px] flex justify-center"></div>
+            <div id="google-signup-btn" style={{ colorScheme: 'light' }} className="w-full min-h-[44px] flex justify-center"></div>
           </div>
         </div>
 

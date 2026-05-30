@@ -16,7 +16,7 @@ export default function Landing() {
       <nav className="relative z-10 flex items-center justify-between px-8 py-5 border-b border-white/5">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-sm font-black">AI</div>
-          <span className="font-bold text-lg tracking-tight">AIOps <span className="text-indigo-400">Khadamni</span></span>
+          <span className="font-bold text-lg tracking-tight">AIOps <span className="text-indigo-400">Freelance</span></span>
         </div>
         <div className="flex items-center gap-4">
           <ThemeToggle />
