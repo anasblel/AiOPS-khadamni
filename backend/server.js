@@ -27,7 +27,24 @@ const httpServer = createServer(app);
 // Initialize socket.io via shared module
 const io = initSocket(httpServer);
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://aiops-khadamni.web.app',
+  'https://aiops-khadamni.firebaseapp.com',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, Postman)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked for origin: ${origin}`));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // Serve uploaded files statically
