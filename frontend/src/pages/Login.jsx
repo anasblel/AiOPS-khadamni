@@ -127,7 +127,7 @@ export default function Login() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
             <div className="w-9 h-9 rounded-xl bg-indigo-500 flex items-center justify-center text-sm font-black">AI</div>
-            <span className="font-bold text-xl tracking-tight">AIOps <span className="text-indigo-400">Freelance</span></span>
+            <span className="font-bold text-xl tracking-tight">AIOps <span className="text-indigo-400">Khadamni</span></span>
           </Link>
           <h1 className="text-2xl font-bold">Welcome back</h1>
           <p className="text-white/40 text-sm mt-1">Sign in to your account</p>
